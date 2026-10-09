@@ -1,0 +1,63 @@
+import { test, expect } from '@playwright/test'
+
+test('types Noted level 1, repeats, and keeps clipboard shortcut untouched', async ({ page }) => {
+  await page.goto('./')
+  const editor = page.locator('.cm-content')
+  await editor.click()
+  await page.keyboard.press('KeyQ')
+  await page.keyboard.down('KeyW'); await page.keyboard.press('KeyW'); await page.keyboard.up('KeyW')
+  await expect(editor).toHaveText('zyy')
+  await page.keyboard.press('Control+A')
+  await page.keyboard.press('Control+C')
+  await expect(editor).toHaveText('zyy')
+})
+
+test('uses held right Mod3 and releases it', async ({ page }) => {
+  await page.goto('./')
+  const editor = page.locator('.cm-content')
+  await editor.click()
+  await page.keyboard.down('Quote')
+  await page.keyboard.press('KeyE')
+  await page.keyboard.up('Quote')
+  await page.keyboard.press('KeyE')
+  await expect(editor).toHaveText('[u')
+})
+
+test('uses Mod4 navigation and shift selection', async ({ page }) => {
+  await page.goto('./')
+  const editor = page.locator('.cm-content')
+  await editor.click()
+  await page.keyboard.type('abc')
+  await page.keyboard.down('AltRight')
+  await page.keyboard.press('KeyS')
+  await page.keyboard.down('Shift'); await page.keyboard.press('KeyS'); await page.keyboard.up('Shift')
+  await page.keyboard.up('AltRight')
+  await page.keyboard.press('KeyQ')
+  // "abc" itself is translated from the physical keys to "cöü".
+  await expect(editor).toHaveText('czü')
+})
+
+test('unsupported layers and dead slots do not leak physical QWERTZ characters', async ({ page }) => {
+  await page.goto('./')
+  const editor = page.locator('.cm-content')
+  await editor.click()
+  await page.keyboard.down('Quote')
+  await page.keyboard.down('Shift')
+  await page.keyboard.press('KeyQ')
+  await page.keyboard.up('Shift')
+  await page.keyboard.down('AltRight')
+  await page.keyboard.press('KeyQ')
+  await page.keyboard.up('AltRight')
+  await page.keyboard.up('Quote')
+  await page.keyboard.press('Backslash')
+  await expect(editor).toHaveText('')
+})
+
+test('does not translate synthetic composition input', async ({ page }) => {
+  await page.goto('./')
+  const editor = page.locator('.cm-content')
+  await editor.click()
+  await editor.dispatchEvent('compositionstart', { data: '' })
+  await editor.dispatchEvent('compositionend', { data: '漢' })
+  await expect(editor).toBeVisible()
+})
