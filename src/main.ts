@@ -17,6 +17,7 @@ import rustGrammar from 'highlight.js/lib/languages/rust'
 import sqlGrammar from 'highlight.js/lib/languages/sql'
 import { isLayoutModifier, isMappedCode, translateCode } from './noted-layout'
 import { darkHighlightStyle } from './editor-theme'
+import { restoreDocument, saveDocument } from './document-storage'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
 app.innerHTML = `<main><div id="editor" aria-label="Noted Texteditor"></div></main>`
@@ -24,6 +25,8 @@ app.innerHTML = `<main><div id="editor" aria-label="Noted Texteditor"></div></ma
 const languageSlot = new Compartment()
 const held = { mod3Caps: false, mod3Right: false, mod4Angle: false, mod4Alt: false }
 let detectionTimer = 0
+let saveTimer = 0
+let pendingText: string | null = null
 let currentLanguage = 'plaintext'
 
 for (const [name, grammar] of Object.entries({ javascript: javascriptGrammar, typescript: typescriptGrammar, json: jsonGrammar, python: pythonGrammar, xml: xmlGrammar, css: cssGrammar, markdown: markdownGrammar, java: javaGrammar, cpp: cppGrammar, rust: rustGrammar, sql: sqlGrammar })) {
@@ -81,6 +84,19 @@ function clearLanguage() {
   view.dispatch({ effects: languageSlot.reconfigure([]) })
 }
 
+function flushDocument() {
+  if (pendingText === null) return
+  window.clearTimeout(saveTimer)
+  saveDocument(pendingText)
+  pendingText = null
+}
+
+function scheduleSave(text: string) {
+  pendingText = text
+  window.clearTimeout(saveTimer)
+  saveTimer = window.setTimeout(flushDocument, 250)
+}
+
 async function detectLanguage(text: string) {
   if (text.trim().length < 24) { clearLanguage(); return }
   const result = hljs.highlightAuto(text.slice(0, 20_000), Object.keys(languages))
@@ -95,7 +111,7 @@ async function detectLanguage(text: string) {
 const view = new EditorView({
   parent: document.querySelector('#editor')!,
   state: EditorState.create({
-    doc: '',
+    doc: restoreDocument(),
     extensions: [
       lineNumbers(), highlightActiveLineGutter(), history(), drawSelection(), indentOnInput(), bracketMatching(),
       syntaxHighlighting(darkHighlightStyle, { fallback: true }), keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]), languageSlot.of([]),
@@ -123,10 +139,16 @@ const view = new EditorView({
         blur() { held.mod3Caps = held.mod3Right = held.mod4Angle = held.mod4Alt = false }
       }),
       EditorView.updateListener.of(update => {
-        if (update.docChanged) { window.clearTimeout(detectionTimer); detectionTimer = window.setTimeout(() => { void detectLanguage(update.state.doc.toString()) }, 450) }
+        if (update.docChanged) {
+          const text = update.state.doc.toString()
+          scheduleSave(text)
+          window.clearTimeout(detectionTimer)
+          detectionTimer = window.setTimeout(() => { void detectLanguage(text) }, 450)
+        }
       })
     ]
   })
 })
 
+window.addEventListener('pagehide', flushDocument)
 view.focus()

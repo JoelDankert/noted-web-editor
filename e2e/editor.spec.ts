@@ -1,7 +1,12 @@
 import { test, expect } from '@playwright/test'
 
-test('types Noted level 1, repeats, and keeps clipboard shortcut untouched', async ({ page }) => {
+test.beforeEach(async ({ page }) => {
   await page.goto('./')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+})
+
+test('types Noted level 1, repeats, and keeps clipboard shortcut untouched', async ({ page }) => {
   const editor = page.locator('.cm-content')
   await editor.click()
   await page.keyboard.press('KeyQ')
@@ -13,7 +18,6 @@ test('types Noted level 1, repeats, and keeps clipboard shortcut untouched', asy
 })
 
 test('uses held right Mod3 and releases it', async ({ page }) => {
-  await page.goto('./')
   const editor = page.locator('.cm-content')
   await editor.click()
   await page.keyboard.down('Quote')
@@ -24,7 +28,6 @@ test('uses held right Mod3 and releases it', async ({ page }) => {
 })
 
 test('uses CapsLock only while held as Mod3 and then releases it', async ({ page }) => {
-  await page.goto('./')
   const editor = page.locator('.cm-content')
   await editor.click()
   await page.keyboard.down('CapsLock')
@@ -35,7 +38,6 @@ test('uses CapsLock only while held as Mod3 and then releases it', async ({ page
 })
 
 test('shows only the editor and line numbers', async ({ page }) => {
-  await page.goto('./')
   await expect(page.locator('#app > main > #editor')).toBeVisible()
   await expect(page.locator('header, footer, aside, .badge, .notice, .statusbar')).toHaveCount(0)
   await expect(page.locator('.cm-lineNumbers')).toBeVisible()
@@ -43,7 +45,6 @@ test('shows only the editor and line numbers', async ({ page }) => {
 })
 
 test('uses distinct bright colors for dark-mode syntax tokens', async ({ page }) => {
-  await page.goto('./')
   const editor = page.locator('.cm-content')
   await editor.click()
   await page.keyboard.insertText('const greeting = "hello world"; // readable comment')
@@ -53,7 +54,6 @@ test('uses distinct bright colors for dark-mode syntax tokens', async ({ page })
 })
 
 test('uses Mod4 navigation and shift selection', async ({ page }) => {
-  await page.goto('./')
   const editor = page.locator('.cm-content')
   await editor.click()
   await page.keyboard.type('abc')
@@ -67,7 +67,6 @@ test('uses Mod4 navigation and shift selection', async ({ page }) => {
 })
 
 test('unsupported layers and dead slots do not leak physical QWERTZ characters', async ({ page }) => {
-  await page.goto('./')
   const editor = page.locator('.cm-content')
   await editor.click()
   await page.keyboard.down('Quote')
@@ -83,10 +82,20 @@ test('unsupported layers and dead slots do not leak physical QWERTZ characters',
 })
 
 test('does not translate synthetic composition input', async ({ page }) => {
-  await page.goto('./')
   const editor = page.locator('.cm-content')
   await editor.click()
   await editor.dispatchEvent('compositionstart', { data: '' })
   await editor.dispatchEvent('compositionend', { data: '漢' })
   await expect(editor).toBeVisible()
+})
+
+test('restores editor content after a page reload', async ({ page }) => {
+  const editor = page.locator('.cm-content')
+  await editor.fill('A persistent local note.\nSecond line.')
+
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('noted-web-editor:document:v1')))
+    .toContain('A persistent local note.')
+  await page.reload()
+
+  await expect(page.locator('.cm-line')).toHaveText(['A persistent local note.', 'Second line.'])
 })
