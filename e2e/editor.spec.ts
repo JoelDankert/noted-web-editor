@@ -89,6 +89,27 @@ test('does not translate synthetic composition input', async ({ page }) => {
   await expect(editor).toBeVisible()
 })
 
+test('highlights a short JavaScript snippet without waiting for 24 characters', async ({ page }) => {
+  const editor = page.locator('.cm-content')
+  await editor.fill('const x = 1;')
+  await expect.poll(async () => editor.locator('span').evaluateAll(elements =>
+    elements.map(element => getComputedStyle(element).color)
+  )).toContain('rgb(255, 155, 242)')
+})
+
+test('restores syntax highlighting immediately after refreshing a saved document', async ({ page }) => {
+  const editor = page.locator('.cm-content')
+  await editor.fill('const greeting = "hello world"; // readable comment')
+  await expect.poll(async () => editor.locator('span').evaluateAll(elements =>
+    elements.map(element => getComputedStyle(element).color)
+  )).toContain('rgb(255, 155, 242)')
+  await page.reload()
+  await expect(page.locator('.cm-content')).toContainText('const greeting')
+  await expect.poll(async () => page.locator('.cm-content span').evaluateAll(elements =>
+    elements.map(element => getComputedStyle(element).color)
+  )).toContain('rgb(255, 155, 242)')
+})
+
 test('restores editor content after a page reload', async ({ page }) => {
   const editor = page.locator('.cm-content')
   await editor.fill('A persistent local note.\nSecond line.')

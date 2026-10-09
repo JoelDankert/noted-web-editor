@@ -98,10 +98,10 @@ function scheduleSave(text: string) {
 }
 
 async function detectLanguage(text: string) {
-  if (text.trim().length < 24) { clearLanguage(); return }
+  if (!text.trim()) { clearLanguage(); return }
   const result = hljs.highlightAuto(text.slice(0, 20_000), Object.keys(languages))
   const name = result.language ?? 'plaintext'
-  if (!languages[name] || (result.relevance ?? 0) < 2) { clearLanguage(); return }
+  if (!languages[name] || (result.relevance ?? 0) < 1) { clearLanguage(); return }
   if (name === currentLanguage) return
   currentLanguage = name
   const extension = await languages[name].load()
@@ -151,4 +151,5 @@ const view = new EditorView({
 })
 
 window.addEventListener('pagehide', flushDocument)
+if (view.state.doc.length) detectionTimer = window.setTimeout(() => { void detectLanguage(view.state.doc.toString()) }, 0)
 view.focus()
