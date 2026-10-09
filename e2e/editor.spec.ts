@@ -23,6 +23,19 @@ test('uses held right Mod3 and releases it', async ({ page }) => {
   await expect(editor).toHaveText('[u')
 })
 
+test('uses CapsLock only while held as Mod3 and then releases it', async ({ page }) => {
+  await page.goto('./')
+  const editor = page.locator('.cm-content')
+  await editor.click()
+  await page.keyboard.down('CapsLock')
+  await page.keyboard.press('KeyE')
+  await expect(page.locator('#layer')).toHaveText('Ebene 3')
+  await page.keyboard.up('CapsLock')
+  await page.keyboard.press('KeyE')
+  await expect(editor).toHaveText('[u')
+  await expect(page.locator('#layer')).toHaveText('Ebene 1')
+})
+
 test('uses Mod4 navigation and shift selection', async ({ page }) => {
   await page.goto('./')
   const editor = page.locator('.cm-content')
