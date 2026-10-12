@@ -1,5 +1,5 @@
 import './style.css'
-import { EditorState, Compartment, type Extension } from '@codemirror/state'
+import { EditorState, Compartment, Prec, type Extension } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, drawSelection } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, deleteCharBackward, deleteCharForward, cursorCharLeft, cursorCharRight, cursorLineUp, cursorLineDown, cursorLineBoundaryBackward, cursorLineBoundaryForward, cursorPageUp, cursorPageDown, selectCharLeft, selectCharRight, selectLineUp, selectLineDown, selectLineBoundaryBackward, selectLineBoundaryForward, selectPageUp, selectPageDown } from '@codemirror/commands'
 import { bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language'
@@ -114,7 +114,13 @@ const view = new EditorView({
     doc: restoreDocument(),
     extensions: [
       lineNumbers(), highlightActiveLineGutter(), history(), drawSelection(), indentOnInput(), bracketMatching(),
-      syntaxHighlighting(darkHighlightStyle, { fallback: true }), keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]), languageSlot.of([]),
+      syntaxHighlighting(darkHighlightStyle, { fallback: true }),
+      Prec.highest(keymap.of([{ key: 'Ctrl-Enter', run(editor) {
+        const line = editor.state.doc.lineAt(editor.state.selection.main.head).text.trim()
+        if (line) window.open(`https://www.google.com/search?q=${encodeURIComponent(line)}`, '_blank', 'noopener,noreferrer')
+        return true
+      } }])),
+      keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]), languageSlot.of([]),
       EditorView.lineWrapping,
       EditorView.domEventHandlers({
         keydown(event, editor) {

@@ -110,6 +110,28 @@ test('restores syntax highlighting immediately after refreshing a saved document
   )).toContain('rgb(255, 155, 242)')
 })
 
+test('Ctrl+Enter opens a Google search for only the current cursor line', async ({ page }) => {
+  const editor = page.locator('.cm-content')
+  await editor.fill('first line\n  C++ & TypeScript  \nlast line')
+  await page.locator('.cm-line').nth(1).click()
+  const popupPromise = page.waitForEvent('popup')
+  await page.keyboard.press('Control+Enter')
+  const popup = await popupPromise
+  await expect.poll(() => popup.url()).toBe('https://www.google.com/search?q=C%2B%2B%20%26%20TypeScript')
+  await expect(page.locator('.cm-line')).toHaveText(['first line', '  C++ & TypeScript  ', 'last line'])
+  await popup.close()
+})
+
+test('Ctrl+Enter on an empty line opens no tab and inserts no newline', async ({ page, context }) => {
+  const editor = page.locator('.cm-content')
+  await editor.fill('first line\n   \nlast line')
+  await page.locator('.cm-line').nth(1).click()
+  const before = context.pages().length
+  await page.keyboard.press('Control+Enter')
+  await expect(page.locator('.cm-line')).toHaveText(['first line', '   ', 'last line'])
+  expect(context.pages()).toHaveLength(before)
+})
+
 test('restores editor content after a page reload', async ({ page }) => {
   const editor = page.locator('.cm-content')
   await editor.fill('A persistent local note.\nSecond line.')
