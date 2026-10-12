@@ -23,7 +23,10 @@ const app = document.querySelector<HTMLDivElement>('#app')!
 app.innerHTML = `<main><div id="editor" aria-label="Noted Texteditor"></div></main>`
 
 const languageSlot = new Compartment()
+const highlightSlot = new Compartment()
 const held = { mod3Caps: false, mod3Right: false, mod4Angle: false, mod4Alt: false }
+let syntaxHighlightEnabled = true
+let highlightGeneration = 0
 let detectionTimer = 0
 let saveTimer = 0
 let pendingText: string | null = null
@@ -84,6 +87,18 @@ function clearLanguage() {
   view.dispatch({ effects: languageSlot.reconfigure([]) })
 }
 
+function toggleSyntaxHighlight(editor: EditorView) {
+  syntaxHighlightEnabled = !syntaxHighlightEnabled
+  highlightGeneration++
+  window.clearTimeout(detectionTimer)
+  currentLanguage = 'plaintext'
+  editor.dispatch({ effects: [
+    highlightSlot.reconfigure(syntaxHighlightEnabled ? syntaxHighlighting(darkHighlightStyle, { fallback: true }) : []),
+    languageSlot.reconfigure([])
+  ] })
+  if (syntaxHighlightEnabled) void detectLanguage(editor.state.doc.toString())
+}
+
 function flushDocument() {
   if (pendingText === null) return
   window.clearTimeout(saveTimer)
@@ -98,14 +113,16 @@ function scheduleSave(text: string) {
 }
 
 async function detectLanguage(text: string) {
+  if (!syntaxHighlightEnabled) return
   if (!text.trim()) { clearLanguage(); return }
+  const generation = highlightGeneration
   const result = hljs.highlightAuto(text.slice(0, 20_000), Object.keys(languages))
   const name = result.language ?? 'plaintext'
   if (!languages[name] || (result.relevance ?? 0) < 1) { clearLanguage(); return }
   if (name === currentLanguage) return
   currentLanguage = name
   const extension = await languages[name].load()
-  if (currentLanguage === name) view.dispatch({ effects: languageSlot.reconfigure(extension) })
+  if (syntaxHighlightEnabled && highlightGeneration === generation && currentLanguage === name) view.dispatch({ effects: languageSlot.reconfigure(extension) })
 }
 
 const view = new EditorView({
@@ -114,12 +131,15 @@ const view = new EditorView({
     doc: restoreDocument(),
     extensions: [
       lineNumbers(), highlightActiveLineGutter(), history(), drawSelection(), indentOnInput(), bracketMatching(),
-      syntaxHighlighting(darkHighlightStyle, { fallback: true }),
-      Prec.highest(keymap.of([{ key: 'Ctrl-Enter', run(editor) {
-        const line = editor.state.doc.lineAt(editor.state.selection.main.head).text.trim()
-        if (line) window.open(`https://www.google.com/search?q=${encodeURIComponent(line)}`, '_blank', 'noopener,noreferrer')
-        return true
-      } }])),
+      highlightSlot.of(syntaxHighlighting(darkHighlightStyle, { fallback: true })),
+      Prec.highest(keymap.of([
+        { key: 'Shift-Enter', run(editor) { toggleSyntaxHighlight(editor); return true } },
+        { key: 'Ctrl-Enter', run(editor) {
+          const line = editor.state.doc.lineAt(editor.state.selection.main.head).text.trim()
+          if (line) window.open(`https://www.google.com/search?q=${encodeURIComponent(line)}`, '_blank', 'noopener,noreferrer')
+          return true
+        } }
+      ])),
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]), languageSlot.of([]),
       EditorView.lineWrapping,
       EditorView.domEventHandlers({

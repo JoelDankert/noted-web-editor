@@ -53,6 +53,24 @@ test('uses distinct bright colors for dark-mode syntax tokens', async ({ page })
   )).toEqual(expect.arrayContaining(['rgb(255, 155, 242)', 'rgb(185, 246, 165)', 'rgb(184, 192, 204)']))
 })
 
+test('Shift+Enter toggles syntax highlighting without changing text or inserting a newline', async ({ page }) => {
+  const editor = page.locator('.cm-content')
+  const text = 'const greeting = "hello world"; // readable comment'
+  await editor.fill(text)
+  const tokenColors = () => editor.locator('.cm-line span').evaluateAll(elements =>
+    elements.map(element => getComputedStyle(element).color)
+  )
+  await expect.poll(tokenColors).toContain('rgb(255, 155, 242)')
+  await page.keyboard.press('Shift+Enter')
+  await expect(editor).toHaveText(text)
+  await expect.poll(tokenColors).not.toContain('rgb(255, 155, 242)')
+  await editor.fill('const updated = "highlight me";')
+  await expect.poll(tokenColors).not.toContain('rgb(255, 155, 242)')
+  await page.keyboard.press('Shift+Enter')
+  await expect(editor).toHaveText('const updated = "highlight me";')
+  await expect.poll(tokenColors).toContain('rgb(255, 155, 242)')
+})
+
 test('uses Mod4 navigation and shift selection', async ({ page }) => {
   const editor = page.locator('.cm-content')
   await editor.click()
