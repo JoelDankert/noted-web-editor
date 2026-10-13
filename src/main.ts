@@ -180,13 +180,39 @@ function renderSettings(activeIndex = 0) {
   })
   overlay.append(list)
   overlay.addEventListener('keydown', event => {
+    if (settings.notedKeyboard && isLayoutModifier(event.code)) {
+      modifierChange(event, true)
+      event.preventDefault()
+      return
+    }
+    let key = event.key
+    if (settings.notedKeyboard) {
+      const altGraph = held.mod4Alt || event.getModifierState('AltGraph')
+      if (!event.metaKey && (!event.ctrlKey || altGraph) && (!event.altKey || altGraph)) {
+        const mapped = translateCode(event.code, {
+          shift: event.shiftKey, mod3: held.mod3Caps || held.mod3Right,
+          mod4: held.mod4Angle || held.mod4Alt || altGraph,
+          ctrl: event.ctrlKey && !altGraph, meta: event.metaKey, composing: event.isComposing
+        })
+        if (mapped?.kind === 'command') key = mapped.value
+      }
+    }
     const buttons = [...overlay.querySelectorAll<HTMLButtonElement>('button')]
     const current = Math.max(0, buttons.indexOf(document.activeElement as HTMLButtonElement))
-    if (event.key === 'Escape') { event.preventDefault(); closeSettings(); return }
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    if (key === 'Escape') { event.preventDefault(); closeSettings(); return }
+    if (key === 'ArrowDown' || key === 'ArrowUp') {
       event.preventDefault()
-      const delta = event.key === 'ArrowDown' ? 1 : -1
+      const delta = key === 'ArrowDown' ? 1 : -1
       buttons[(current + delta + buttons.length) % buttons.length].focus()
+    } else if (key === 'Enter' && event.key !== 'Enter') {
+      event.preventDefault()
+      buttons[current].click()
+    }
+  })
+  overlay.addEventListener('keyup', event => {
+    if (isLayoutModifier(event.code)) {
+      modifierChange(event, false)
+      if (settings.notedKeyboard) event.preventDefault()
     }
   })
   settingsRoot.replaceChildren(overlay)
@@ -230,11 +256,10 @@ const view = new EditorView({
       ])),
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]), languageSlot.of([]),
       EditorView.lineWrapping,
-      EditorView.domEventHandlers({
+      Prec.highest(EditorView.domEventHandlers({
         keydown(event, editor) {
           if (event.isComposing || event.key === 'Process') return false
           if (!settings.notedKeyboard) return false
-          if (settings.vim && !getCM(editor)?.state.vim?.insertMode) return false
           if (isLayoutModifier(event.code)) { modifierChange(event, true); event.preventDefault(); return true }
           const altGraph = held.mod4Alt || event.getModifierState('AltGraph')
           if (event.metaKey || (event.ctrlKey && !altGraph) || (event.altKey && !altGraph)) return false
@@ -249,6 +274,18 @@ const view = new EditorView({
             return false
           }
           event.preventDefault()
+          const cm = settings.vim ? getCM(editor) : undefined
+          if (cm?.state.vim && !cm.state.vim.insertMode) {
+            const vimCommands: Record<string, string> = {
+              ArrowLeft: '<Left>', ArrowRight: '<Right>', ArrowUp: '<Up>', ArrowDown: '<Down>',
+              Home: '<Home>', End: '<End>', PageUp: '<PageUp>', PageDown: '<PageDown>',
+              Backspace: '<BS>', Delete: '<Del>', Enter: '<CR>', Tab: '<Tab>', Escape: '<Esc>', Undo: 'u'
+            }
+            const vimKey = translated.kind === 'text' ? translated.value : vimCommands[translated.value]
+            if (translated.value === 'Escape') openSettings()
+            else if (vimKey) Vim.handleKey(cm, vimKey, 'user')
+            return true
+          }
           return translated.kind === 'text' ? (insert(editor, translated.value), true) : runCommand(editor, translated.value, event.shiftKey)
         },
         keyup(event) {
@@ -256,7 +293,7 @@ const view = new EditorView({
           if (modifierChange(event, false)) { event.preventDefault(); return true } return false
         },
         blur() { held.mod3Caps = held.mod3Right = held.mod4Angle = held.mod4Alt = false }
-      }),
+      })),
       EditorView.updateListener.of(update => {
         if (update.docChanged) {
           const text = update.state.doc.toString()

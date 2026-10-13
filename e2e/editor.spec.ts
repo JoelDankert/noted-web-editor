@@ -145,13 +145,13 @@ test('supports Vim insert, normal movement, visual mode, and settings Escape', a
   await page.keyboard.press('Space')
   await page.keyboard.press('Escape')
 
-  await page.keyboard.press('KeyI')
-  await page.keyboard.press('KeyD')
+  await page.keyboard.press('KeyD') // Noted i: enter Vim insert mode
+  await page.keyboard.press('KeyD') // Noted i: insert i
   await expect(editor).toHaveText('abci')
   await page.keyboard.press('Escape')
-  await page.keyboard.press('KeyH')
-  await page.keyboard.press('KeyV')
-  await page.keyboard.press('KeyL')
+  await page.keyboard.press('Semicolon') // Noted h
+  await page.keyboard.press('KeyZ') // Noted v: visual mode
+  await page.keyboard.press('KeyO') // Noted l
   await expect(page.locator('.cm-selectionBackground')).not.toHaveCount(0)
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -167,7 +167,7 @@ test('Vim insert mode keeps Noted emulation when both switches are on', async ({
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Space')
   await page.keyboard.press('Escape')
-  await page.keyboard.press('KeyI')
+  await page.keyboard.press('KeyD') // Noted i enters Vim insert mode
   await page.keyboard.press('KeyQ')
   await expect(editor).toHaveText('z')
   await page.keyboard.press('Escape')
@@ -175,6 +175,35 @@ test('Vim insert mode keeps Noted emulation when both switches are on', async ({
   await expect(editor).toHaveText('z')
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog', { name: 'Einstellungen' })).toBeVisible()
+})
+
+test('Vim receives Noted-translated commands before handling normal-mode keys', async ({ page }) => {
+  const editor = page.locator('.cm-content')
+  await editor.fill('abc')
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Space')
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Semicolon') // Noted h: move one character left
+  await page.keyboard.press('KeyD') // Noted i: enter Vim insert mode
+  await page.keyboard.press('KeyQ') // Noted z: insert a character
+  await expect(editor).toHaveText('abzc')
+})
+
+test('Noted Mod4 navigation and Enter control the Escape settings', async ({ page }) => {
+  await page.keyboard.press('Escape')
+  const switches = page.getByRole('dialog').getByRole('switch')
+  await expect(switches.nth(0)).toBeFocused()
+  await page.keyboard.down('AltRight')
+  await page.keyboard.press('KeyD') // Noted ArrowDown
+  await page.keyboard.press('KeyD') // Noted ArrowDown
+  await page.keyboard.press('KeyV') // Noted Enter
+  await page.keyboard.up('AltRight')
+  await expect(switches.nth(2)).toBeFocused()
+  await expect(switches.nth(2)).toHaveAttribute('aria-checked', 'true')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
 test('restores Vim and emulation preferences after reload', async ({ page }) => {
