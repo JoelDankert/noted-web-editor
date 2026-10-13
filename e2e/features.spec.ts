@@ -19,6 +19,16 @@ test('shows a ghost result without changing text and Enter accepts it', async ({
   await expect(editor).toHaveText('(sqrt(50)*sin(30°))/25.3=0.139744423159')
 })
 
+test('computes arithmetic suffixes inside prose and after earlier equals', async ({ page }) => {
+  const editor = page.locator('.cm-content')
+  await editor.fill('hallo test blabla5*6=30/2=')
+  await expect(page.locator('.cm-expression-result')).toHaveText('15')
+  await page.keyboard.press('Enter')
+  await expect(editor).toHaveText('hallo test blabla5*6=30/2=15')
+  await editor.fill('hallo test blabla5*6=')
+  await expect(page.locator('.cm-expression-result')).toHaveText('30')
+})
+
 test('does not offer invalid, selected, or non-caret expressions', async ({ page }) => {
   const editor = page.locator('.cm-content')
   await editor.fill('hello=')
@@ -44,6 +54,8 @@ test('Noted Enter accepts a result but Vim normal mode leaves it untouched', asy
   await page.keyboard.press('Shift+Enter')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Space')
   await page.keyboard.press('Escape')
   await editor.fill('2+3=')
@@ -53,33 +65,34 @@ test('Noted Enter accepts a result but Vim normal mode leaves it untouched', asy
   await expect(editor).toHaveText('2+3=')
 })
 
-test('file actions are keyboard rows, roundtrip a mocked native handle, and leave settings untouched', async ({ page }) => {
+test('file actions are first and work even when native picker APIs throw', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
-    let contents = ''
-    const handle = {
-      name: 'note.txt',
-      async createWritable() { return { async write(value: string) { contents = value }, async close() {} } },
-      async getFile() { return new File([contents], 'note.txt', { type: 'text/plain' }) }
-    }
-    Object.defineProperty(window, 'showSaveFilePicker', { configurable: true, value: async () => handle })
-    Object.defineProperty(window, 'showOpenFilePicker', { configurable: true, value: async () => [handle] })
+    Object.defineProperty(window, 'showSaveFilePicker', { configurable: true, value: async () => { throw new DOMException('blocked', 'SecurityError') } })
+    Object.defineProperty(window, 'showOpenFilePicker', { configurable: true, value: async () => { throw new DOMException('blocked', 'SecurityError') } })
   })
   await page.reload()
   const editor = page.locator('.cm-content')
   await editor.fill('saved bytes äöü')
   await page.keyboard.press('Shift+Enter')
   const dialog = page.getByRole('dialog')
+  const buttons = dialog.locator('button')
+  await expect(buttons.first()).toHaveText('Datei öffnen')
+  await expect(buttons.nth(1)).toHaveText('Datei speichern')
+  await expect(buttons.first()).toBeFocused()
   await expect(dialog.getByRole('switch')).toHaveCount(4)
-  await expect(dialog.getByRole('button', { name: 'Datei öffnen' })).toBeVisible()
-  await expect(dialog.getByRole('button', { name: 'Datei speichern' })).toBeVisible()
-  for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  const downloadPromise = page.waitForEvent('download')
   await page.keyboard.press('Enter')
-  await expect(dialog).toHaveCount(0)
-  await editor.fill('temporary')
+  const download = await downloadPromise
+  const path = testInfo.outputPath('blocked-api-notiz.txt')
+  await download.saveAs(path)
+  expect(await readFile(path, 'utf8')).toBe('saved bytes äöü')
+  await page.evaluate(() => localStorage.clear())
+  await editor.fill('')
   await page.keyboard.press('Shift+Enter')
-  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown')
-  page.once('dialog', prompt => prompt.accept())
-  await page.keyboard.press('Space')
+  const chooser = page.waitForEvent('filechooser')
+  await page.keyboard.press('Enter')
+  await (await chooser).setFiles({ name: 'notiz.txt', mimeType: 'text/plain', buffer: await readFile(path) })
   await expect(editor).toHaveText('saved bytes äöü')
   await expect.poll(() => page.evaluate(() => localStorage.getItem('noted-web-editor:settings:v1'))).toBeNull()
 })
@@ -98,7 +111,7 @@ test('fallback downloads a real file and opens it after storage is cleared', asy
   const editor = page.locator('.cm-content')
   await editor.fill('real blob content')
   await page.keyboard.press('Shift+Enter')
-  for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
   const downloadPromise = page.waitForEvent('download')
   await page.keyboard.press('Space')
   const download = await downloadPromise
@@ -111,7 +124,6 @@ test('fallback downloads a real file and opens it after storage is cleared', asy
   await page.evaluate(() => localStorage.clear())
   await editor.fill('')
   await page.keyboard.press('Shift+Enter')
-  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown')
   const chooser = page.waitForEvent('filechooser')
   await page.keyboard.press('Enter')
   await (await chooser).setFiles({ name: 'manual.txt', mimeType: 'text/plain', buffer: await readFile(path) })

@@ -84,7 +84,7 @@ class Parser {
       const number = functionMatch[0] === 'sqrt' ? Math.sqrt(this.plain(argument))
         : functionMatch[0] === 'sin' ? Math.sin(angle)
           : functionMatch[0] === 'cos' ? Math.cos(angle) : Math.tan(angle)
-      return { number, degrees: false }
+      return this.withDegree({ number, degrees: false })
     }
     if (this.take('(')) {
       const value = this.additive()

@@ -37,7 +37,7 @@ let detectionTimer = 0
 let saveTimer = 0
 let pendingText: string | null = null
 let currentLanguage = 'plaintext'
-let currentFileHandle: FileSystemFileHandle | null = null
+let currentFileName = 'notiz.txt'
 
 for (const [name, grammar] of Object.entries({ javascript: javascriptGrammar, typescript: typescriptGrammar, json: jsonGrammar, python: pythonGrammar, xml: xmlGrammar, css: cssGrammar, markdown: markdownGrammar, java: javaGrammar, cpp: cppGrammar, rust: rustGrammar, sql: sqlGrammar })) {
   hljs.registerLanguage(name, grammar)
@@ -72,7 +72,14 @@ function expressionCompletion(editor: EditorView): string | null {
   }
   const line = editor.state.doc.lineAt(selection.head)
   if (selection.head !== line.to || !line.text.endsWith('=')) return null
-  return evaluateExpression(line.text.slice(0, -1))
+  const beforeEquals = line.text.slice(0, -1)
+  const segment = beforeEquals.slice(beforeEquals.lastIndexOf('=') + 1)
+  // Find the longest valid arithmetic suffix, including one attached to prose.
+  for (let start = Math.max(0, segment.length - 256); start < segment.length; start++) {
+    const result = evaluateExpression(segment.slice(start))
+    if (result !== null) return result
+  }
+  return null
 }
 
 class ResultWidget extends WidgetType {
@@ -224,8 +231,8 @@ const fallbackOpenInput = document.querySelector<HTMLInputElement>('#file-open-f
 let settingsOpen = false
 let settingsStatus = ''
 
-function pickerError(error: unknown): string {
-  return error instanceof Error && error.name === 'AbortError' ? '' : 'Dateifehler'
+function fileError(error: unknown): string {
+  return error instanceof Error ? `Datei konnte nicht verarbeitet werden: ${error.message}` : 'Datei konnte nicht verarbeitet werden'
 }
 
 function showSettingsStatus(message: string) {
@@ -234,23 +241,16 @@ function showSettingsStatus(message: string) {
   if (status) status.textContent = message
 }
 
-function replaceWithOpenedText(text: string, handle: FileSystemFileHandle | null) {
+function replaceWithOpenedText(text: string, fileName: string) {
   const current = view.state.doc.toString()
   if (current && current !== text && !window.confirm('Aktuellen Text ersetzen?')) return
   view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: text.length } })
-  currentFileHandle = handle
+  currentFileName = fileName
   closeSettings()
 }
 
 function openFile() {
   showSettingsStatus('')
-  const picker = (window as Window & { showOpenFilePicker?: (options?: unknown) => Promise<FileSystemFileHandle[]> }).showOpenFilePicker
-  if (picker) {
-    void picker.call(window, { types: [{ description: 'Textdateien', accept: { 'text/plain': ['.txt'] } }], multiple: false })
-      .then(handles => handles[0]?.getFile().then(file => file.text()).then(text => replaceWithOpenedText(text, handles[0])))
-      .catch(error => showSettingsStatus(pickerError(error)))
-    return
-  }
   fallbackOpenInput.value = ''
   fallbackOpenInput.click()
 }
@@ -259,32 +259,22 @@ function downloadText(text: string) {
   const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }))
   const link = document.createElement('a')
   link.href = url
-  link.download = currentFileHandle?.name || 'notiz.txt'
+  link.download = currentFileName
   link.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
   closeSettings()
 }
 
 function saveFile() {
   showSettingsStatus('')
-  const text = view.state.doc.toString()
-  const write = (handle: FileSystemFileHandle) => handle.createWritable()
-    .then(async writable => { await writable.write(text); await writable.close(); currentFileHandle = handle; closeSettings() })
-    .catch(error => showSettingsStatus(pickerError(error)))
-  if (currentFileHandle) { void write(currentFileHandle); return }
-  const picker = (window as Window & { showSaveFilePicker?: (options?: unknown) => Promise<FileSystemFileHandle> }).showSaveFilePicker
-  if (picker) {
-    void picker.call(window, { suggestedName: 'notiz.txt', types: [{ description: 'Textdateien', accept: { 'text/plain': ['.txt'] } }] })
-      .then(write).catch(error => showSettingsStatus(pickerError(error)))
-    return
-  }
-  downloadText(text)
+  try { downloadText(view.state.doc.toString()) }
+  catch (error) { showSettingsStatus(fileError(error)) }
 }
 
 fallbackOpenInput.addEventListener('change', () => {
   const file = fallbackOpenInput.files?.[0]
   if (!file) return
-  void file.text().then(text => replaceWithOpenedText(text, null)).catch(error => showSettingsStatus(pickerError(error)))
+  void file.text().then(text => replaceWithOpenedText(text, file.name)).catch(error => showSettingsStatus(fileError(error)))
 })
 
 function closeSettings() {
@@ -302,6 +292,14 @@ function renderSettings(activeIndex = 0) {
   overlay.setAttribute('aria-label', 'Einstellungen')
   const list = document.createElement('div')
   list.className = 'settings-list'
+  for (const [label, action] of [['Datei öffnen', openFile], ['Datei speichern', saveFile]] as const) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'settings-action'
+    button.textContent = label
+    button.addEventListener('click', action)
+    list.append(button)
+  }
   settingRows.forEach(({ key, label }, index) => {
     const button = document.createElement('button')
     button.type = 'button'
@@ -312,18 +310,10 @@ function renderSettings(activeIndex = 0) {
     button.innerHTML = `<span>${label}</span><span aria-hidden="true">${settings[key] ? 'an' : 'aus'}</span>`
     button.addEventListener('click', () => {
       setSettings({ ...settings, [key]: !settings[key] })
-      renderSettings(index)
+      renderSettings(index + 2)
     })
     list.append(button)
   })
-  for (const [label, action] of [['Datei öffnen', openFile], ['Datei speichern', saveFile]] as const) {
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.className = 'settings-action'
-    button.textContent = label
-    button.addEventListener('click', action)
-    list.append(button)
-  }
   const status = document.createElement('div')
   status.className = 'settings-status'
   status.setAttribute('role', 'status')
