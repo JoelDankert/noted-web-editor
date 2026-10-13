@@ -1,6 +1,6 @@
 import './style.css'
 import { EditorState, Compartment, Prec, type Extension } from '@codemirror/state'
-import { EditorView, keymap, lineNumbers, gutter, GutterMarker, highlightActiveLineGutter, drawSelection } from '@codemirror/view'
+import { EditorView, keymap, lineNumbers, gutter, GutterMarker, highlightActiveLineGutter, drawSelection, Decoration, WidgetType, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, deleteCharBackward, deleteCharForward, cursorCharLeft, cursorCharRight, cursorLineUp, cursorLineDown, cursorLineBoundaryBackward, cursorLineBoundaryForward, cursorPageUp, cursorPageDown, selectCharLeft, selectCharRight, selectLineUp, selectLineDown, selectLineBoundaryBackward, selectLineBoundaryForward, selectPageUp, selectPageDown } from '@codemirror/commands'
 import { bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language'
 import hljs from 'highlight.js/lib/core'
@@ -20,9 +20,10 @@ import { darkHighlightStyle } from './editor-theme'
 import { restoreDocument, saveDocument } from './document-storage'
 import { getCM, Vim, vim } from '@replit/codemirror-vim'
 import { restoreSettings, saveSettings, type EditorSettings } from './settings-storage'
+import { evaluateExpression } from './expression'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
-app.innerHTML = `<main><div id="editor" aria-label="Noted Texteditor"></div></main><div id="settings-root"></div>`
+app.innerHTML = `<main><div id="editor" aria-label="Noted Texteditor"></div></main><div id="settings-root"></div><input id="file-open-fallback" type="file" accept=".txt,text/plain" hidden>`
 
 const languageSlot = new Compartment()
 const highlightSlot = new Compartment()
@@ -36,6 +37,7 @@ let detectionTimer = 0
 let saveTimer = 0
 let pendingText: string | null = null
 let currentLanguage = 'plaintext'
+let currentFileHandle: FileSystemFileHandle | null = null
 
 for (const [name, grammar] of Object.entries({ javascript: javascriptGrammar, typescript: typescriptGrammar, json: jsonGrammar, python: pythonGrammar, xml: xmlGrammar, css: cssGrammar, markdown: markdownGrammar, java: javaGrammar, cpp: cppGrammar, rust: rustGrammar, sql: sqlGrammar })) {
   hljs.registerLanguage(name, grammar)
@@ -59,6 +61,48 @@ const languages: Record<string, { load: () => Promise<Extension> }> = {
 
 function insert(view: EditorView, text: string) {
   view.dispatch(view.state.replaceSelection(text), { scrollIntoView: true, userEvent: 'input.type' })
+}
+
+function expressionCompletion(editor: EditorView): string | null {
+  const selection = editor.state.selection.main
+  if (!selection.empty) return null
+  if (settings.vim) {
+    const cm = getCM(editor)
+    if (cm?.state.vim && !cm.state.vim.insertMode) return null
+  }
+  const line = editor.state.doc.lineAt(selection.head)
+  if (selection.head !== line.to || !line.text.endsWith('=')) return null
+  return evaluateExpression(line.text.slice(0, -1))
+}
+
+class ResultWidget extends WidgetType {
+  constructor(readonly result: string) { super() }
+  eq(other: ResultWidget) { return other.result === this.result }
+  toDOM() {
+    const span = document.createElement('span')
+    span.className = 'cm-expression-result'
+    span.textContent = this.result
+    span.setAttribute('aria-hidden', 'true')
+    return span
+  }
+}
+
+function resultDecorations(editor: EditorView): DecorationSet {
+  const result = expressionCompletion(editor)
+  return result ? Decoration.set([Decoration.widget({ widget: new ResultWidget(result), side: 1 }).range(editor.state.selection.main.head)]) : Decoration.none
+}
+
+const expressionPreview = ViewPlugin.fromClass(class {
+  decorations: DecorationSet
+  constructor(editor: EditorView) { this.decorations = resultDecorations(editor) }
+  update(update: ViewUpdate) { this.decorations = resultDecorations(update.view) }
+}, { decorations: plugin => plugin.decorations })
+
+function acceptExpression(editor: EditorView): boolean {
+  const result = expressionCompletion(editor)
+  if (!result) return false
+  insert(editor, result)
+  return true
 }
 
 function runCommand(view: EditorView, value: string, shift: boolean): boolean {
@@ -176,11 +220,77 @@ const settingRows: ReadonlyArray<{ key: keyof EditorSettings, label: string }> =
 ]
 
 const settingsRoot = document.querySelector<HTMLDivElement>('#settings-root')!
+const fallbackOpenInput = document.querySelector<HTMLInputElement>('#file-open-fallback')!
 let settingsOpen = false
+let settingsStatus = ''
+
+function pickerError(error: unknown): string {
+  return error instanceof Error && error.name === 'AbortError' ? '' : 'Dateifehler'
+}
+
+function showSettingsStatus(message: string) {
+  settingsStatus = message
+  const status = settingsRoot.querySelector<HTMLElement>('.settings-status')
+  if (status) status.textContent = message
+}
+
+function replaceWithOpenedText(text: string, handle: FileSystemFileHandle | null) {
+  const current = view.state.doc.toString()
+  if (current && current !== text && !window.confirm('Aktuellen Text ersetzen?')) return
+  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: text.length } })
+  currentFileHandle = handle
+  closeSettings()
+}
+
+function openFile() {
+  showSettingsStatus('')
+  const picker = (window as Window & { showOpenFilePicker?: (options?: unknown) => Promise<FileSystemFileHandle[]> }).showOpenFilePicker
+  if (picker) {
+    void picker.call(window, { types: [{ description: 'Textdateien', accept: { 'text/plain': ['.txt'] } }], multiple: false })
+      .then(handles => handles[0]?.getFile().then(file => file.text()).then(text => replaceWithOpenedText(text, handles[0])))
+      .catch(error => showSettingsStatus(pickerError(error)))
+    return
+  }
+  fallbackOpenInput.value = ''
+  fallbackOpenInput.click()
+}
+
+function downloadText(text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = currentFileHandle?.name || 'notiz.txt'
+  link.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+  closeSettings()
+}
+
+function saveFile() {
+  showSettingsStatus('')
+  const text = view.state.doc.toString()
+  const write = (handle: FileSystemFileHandle) => handle.createWritable()
+    .then(async writable => { await writable.write(text); await writable.close(); currentFileHandle = handle; closeSettings() })
+    .catch(error => showSettingsStatus(pickerError(error)))
+  if (currentFileHandle) { void write(currentFileHandle); return }
+  const picker = (window as Window & { showSaveFilePicker?: (options?: unknown) => Promise<FileSystemFileHandle> }).showSaveFilePicker
+  if (picker) {
+    void picker.call(window, { suggestedName: 'notiz.txt', types: [{ description: 'Textdateien', accept: { 'text/plain': ['.txt'] } }] })
+      .then(write).catch(error => showSettingsStatus(pickerError(error)))
+    return
+  }
+  downloadText(text)
+}
+
+fallbackOpenInput.addEventListener('change', () => {
+  const file = fallbackOpenInput.files?.[0]
+  if (!file) return
+  void file.text().then(text => replaceWithOpenedText(text, null)).catch(error => showSettingsStatus(pickerError(error)))
+})
 
 function closeSettings() {
   if (!settingsOpen) return
   settingsOpen = false
+  settingsStatus = ''
   settingsRoot.replaceChildren()
   view.focus()
 }
@@ -206,6 +316,19 @@ function renderSettings(activeIndex = 0) {
     })
     list.append(button)
   })
+  for (const [label, action] of [['Datei öffnen', openFile], ['Datei speichern', saveFile]] as const) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'settings-action'
+    button.textContent = label
+    button.addEventListener('click', action)
+    list.append(button)
+  }
+  const status = document.createElement('div')
+  status.className = 'settings-status'
+  status.setAttribute('role', 'status')
+  status.textContent = settingsStatus
+  list.append(status)
   overlay.append(list)
   overlay.addEventListener('keydown', event => {
     if (event.key === 'Enter' && event.shiftKey) { event.preventDefault(); closeSettings(); return }
@@ -262,6 +385,7 @@ const view = new EditorView({
       lineNumberSlot.of(numberGutter()), highlightActiveLineGutter(), history(), drawSelection(), indentOnInput(), bracketMatching(),
       highlightSlot.of(settings.syntaxHighlighting ? syntaxHighlighting(darkHighlightStyle, { fallback: true }) : []),
       vimSlot.of(settings.vim ? vim() : []),
+      expressionPreview,
       Prec.highest(keymap.of([
         { key: 'Shift-Enter', run() { openSettings(); return true } },
         { key: 'Ctrl-Enter', run(editor) {
@@ -272,7 +396,8 @@ const view = new EditorView({
             : state.doc.sliceString(selection.from, selection.to)).trim()
           if (query) window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer')
           return true
-        } }
+        } },
+        { key: 'Enter', run: acceptExpression }
       ])),
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]), languageSlot.of([]),
       EditorView.lineWrapping,
@@ -305,6 +430,7 @@ const view = new EditorView({
             if (vimKey) Vim.handleKey(cm, vimKey, 'user')
             return true
           }
+          if (translated.kind === 'command' && translated.value === 'Enter' && acceptExpression(editor)) return true
           return translated.kind === 'text' ? (insert(editor, translated.value), true) : runCommand(editor, translated.value, event.shiftKey)
         },
         keyup(event) {
