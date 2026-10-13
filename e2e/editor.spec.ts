@@ -140,6 +140,29 @@ test('Ctrl+Enter opens a Google search for only the current cursor line', async 
   await popup.close()
 })
 
+test('Ctrl+Enter searches only selected text instead of the whole cursor line', async ({ page }) => {
+  const editor = page.locator('.cm-content')
+  await editor.fill('alpha beta gamma\nlast line')
+  await editor.click()
+  await page.keyboard.press('Control+Home')
+  for (let i = 0; i < 5; i++) await page.keyboard.press('Shift+ArrowRight')
+  await page.evaluate(() => { window.open = (url) => { document.documentElement.dataset.searchUrl = String(url); return null } })
+  await page.keyboard.press('Control+Enter')
+  await expect(page.locator('html')).toHaveAttribute('data-search-url', 'https://www.google.com/search?q=alpha')
+  await expect(page.locator('.cm-line')).toHaveText(['alpha beta gamma', 'last line'])
+})
+
+test('Ctrl+Enter searches a multi-line selection including its line break', async ({ page }) => {
+  const editor = page.locator('.cm-content')
+  await editor.fill('alpha\nbeta')
+  await editor.click()
+  await page.keyboard.press('Control+A')
+  await page.evaluate(() => { window.open = (url) => { document.documentElement.dataset.searchUrl = String(url); return null } })
+  await page.keyboard.press('Control+Enter')
+  await expect(page.locator('html')).toHaveAttribute('data-search-url', 'https://www.google.com/search?q=alpha%0Abeta')
+  await expect(page.locator('.cm-line')).toHaveText(['alpha', 'beta'])
+})
+
 test('Ctrl+Enter on an empty line opens no tab and inserts no newline', async ({ page, context }) => {
   const editor = page.locator('.cm-content')
   await editor.fill('first line\n   \nlast line')

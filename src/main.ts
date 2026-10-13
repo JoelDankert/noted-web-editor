@@ -135,8 +135,12 @@ const view = new EditorView({
       Prec.highest(keymap.of([
         { key: 'Shift-Enter', run(editor) { toggleSyntaxHighlight(editor); return true } },
         { key: 'Ctrl-Enter', run(editor) {
-          const line = editor.state.doc.lineAt(editor.state.selection.main.head).text.trim()
-          if (line) window.open(`https://www.google.com/search?q=${encodeURIComponent(line)}`, '_blank', 'noopener,noreferrer')
+          const { state } = editor
+          const selection = state.selection.main
+          const query = (selection.empty
+            ? state.doc.lineAt(selection.head).text
+            : state.doc.sliceString(selection.from, selection.to)).trim()
+          if (query) window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer')
           return true
         } }
       ])),
