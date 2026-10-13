@@ -18,14 +18,17 @@ import sqlGrammar from 'highlight.js/lib/languages/sql'
 import { isLayoutModifier, isMappedCode, translateCode } from './noted-layout'
 import { darkHighlightStyle } from './editor-theme'
 import { restoreDocument, saveDocument } from './document-storage'
+import { getCM, Vim, vim } from '@replit/codemirror-vim'
+import { restoreSettings, saveSettings, type EditorSettings } from './settings-storage'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
-app.innerHTML = `<main><div id="editor" aria-label="Noted Texteditor"></div></main>`
+app.innerHTML = `<main><div id="editor" aria-label="Noted Texteditor"></div></main><div id="settings-root"></div>`
 
 const languageSlot = new Compartment()
 const highlightSlot = new Compartment()
+const vimSlot = new Compartment()
 const held = { mod3Caps: false, mod3Right: false, mod4Angle: false, mod4Alt: false }
-let syntaxHighlightEnabled = true
+let settings = restoreSettings()
 let highlightGeneration = 0
 let detectionTimer = 0
 let saveTimer = 0
@@ -67,7 +70,13 @@ function runCommand(view: EditorView, value: string, shift: boolean): boolean {
   }
   if (value === 'Tab') { insert(view, '\t'); return true }
   if (value === 'Enter') { insert(view, '\n'); return true }
-  if (value === 'Escape') { view.contentDOM.blur(); return true }
+  if (value === 'Escape') {
+    if (settings.vim && !vimIsNormal(view)) {
+      const cm = getCM(view)
+      if (cm) Vim.handleKey(cm, '<Esc>', 'user')
+    } else openSettings()
+    return true
+  }
   if (value === 'Insert') return true
   return commands[value]?.(view) ?? false
 }
@@ -87,16 +96,23 @@ function clearLanguage() {
   view.dispatch({ effects: languageSlot.reconfigure([]) })
 }
 
-function toggleSyntaxHighlight(editor: EditorView) {
-  syntaxHighlightEnabled = !syntaxHighlightEnabled
+function setSettings(next: EditorSettings) {
+  const previous = settings
+  settings = next
+  saveSettings(settings)
+  if (previous.syntaxHighlighting !== settings.syntaxHighlighting) configureSyntaxHighlighting()
+  if (previous.vim !== settings.vim) view.dispatch({ effects: vimSlot.reconfigure(settings.vim ? vim() : []) })
+}
+
+function configureSyntaxHighlighting() {
   highlightGeneration++
   window.clearTimeout(detectionTimer)
   currentLanguage = 'plaintext'
-  editor.dispatch({ effects: [
-    highlightSlot.reconfigure(syntaxHighlightEnabled ? syntaxHighlighting(darkHighlightStyle, { fallback: true }) : []),
+  view.dispatch({ effects: [
+    highlightSlot.reconfigure(settings.syntaxHighlighting ? syntaxHighlighting(darkHighlightStyle, { fallback: true }) : []),
     languageSlot.reconfigure([])
   ] })
-  if (syntaxHighlightEnabled) void detectLanguage(editor.state.doc.toString())
+  if (settings.syntaxHighlighting) void detectLanguage(view.state.doc.toString())
 }
 
 function flushDocument() {
@@ -113,7 +129,7 @@ function scheduleSave(text: string) {
 }
 
 async function detectLanguage(text: string) {
-  if (!syntaxHighlightEnabled) return
+  if (!settings.syntaxHighlighting) return
   if (!text.trim()) { clearLanguage(); return }
   const generation = highlightGeneration
   const result = hljs.highlightAuto(text.slice(0, 20_000), Object.keys(languages))
@@ -122,7 +138,70 @@ async function detectLanguage(text: string) {
   if (name === currentLanguage) return
   currentLanguage = name
   const extension = await languages[name].load()
-  if (syntaxHighlightEnabled && highlightGeneration === generation && currentLanguage === name) view.dispatch({ effects: languageSlot.reconfigure(extension) })
+  if (settings.syntaxHighlighting && highlightGeneration === generation && currentLanguage === name) view.dispatch({ effects: languageSlot.reconfigure(extension) })
+}
+
+const settingRows: ReadonlyArray<{ key: keyof EditorSettings, label: string }> = [
+  { key: 'syntaxHighlighting', label: 'Syntaxhervorhebung' },
+  { key: 'notedKeyboard', label: 'Noted-Tastaturemulation' },
+  { key: 'vim', label: 'Vim' }
+]
+
+const settingsRoot = document.querySelector<HTMLDivElement>('#settings-root')!
+let settingsOpen = false
+
+function closeSettings() {
+  if (!settingsOpen) return
+  settingsOpen = false
+  settingsRoot.replaceChildren()
+  view.focus()
+}
+
+function renderSettings(activeIndex = 0) {
+  const overlay = document.createElement('div')
+  overlay.className = 'settings-overlay'
+  overlay.setAttribute('role', 'dialog')
+  overlay.setAttribute('aria-label', 'Einstellungen')
+  const list = document.createElement('div')
+  list.className = 'settings-list'
+  settingRows.forEach(({ key, label }, index) => {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'settings-toggle'
+    button.setAttribute('role', 'switch')
+    button.setAttribute('aria-checked', String(settings[key]))
+    button.dataset.setting = key
+    button.innerHTML = `<span>${label}</span><span aria-hidden="true">${settings[key] ? 'an' : 'aus'}</span>`
+    button.addEventListener('click', () => {
+      setSettings({ ...settings, [key]: !settings[key] })
+      renderSettings(index)
+    })
+    list.append(button)
+  })
+  overlay.append(list)
+  overlay.addEventListener('keydown', event => {
+    const buttons = [...overlay.querySelectorAll<HTMLButtonElement>('button')]
+    const current = Math.max(0, buttons.indexOf(document.activeElement as HTMLButtonElement))
+    if (event.key === 'Escape') { event.preventDefault(); closeSettings(); return }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const delta = event.key === 'ArrowDown' ? 1 : -1
+      buttons[(current + delta + buttons.length) % buttons.length].focus()
+    }
+  })
+  settingsRoot.replaceChildren(overlay)
+  ;[...overlay.querySelectorAll<HTMLButtonElement>('button')][activeIndex]?.focus()
+}
+
+function openSettings() {
+  if (settingsOpen) return
+  settingsOpen = true
+  renderSettings()
+}
+
+function vimIsNormal(editor: EditorView): boolean {
+  const state = getCM(editor)?.state.vim
+  return !state || (!state.insertMode && !state.visualMode)
 }
 
 const view = new EditorView({
@@ -131,9 +210,14 @@ const view = new EditorView({
     doc: restoreDocument(),
     extensions: [
       lineNumbers(), highlightActiveLineGutter(), history(), drawSelection(), indentOnInput(), bracketMatching(),
-      highlightSlot.of(syntaxHighlighting(darkHighlightStyle, { fallback: true })),
+      highlightSlot.of(settings.syntaxHighlighting ? syntaxHighlighting(darkHighlightStyle, { fallback: true }) : []),
+      vimSlot.of(settings.vim ? vim() : []),
       Prec.highest(keymap.of([
-        { key: 'Shift-Enter', run(editor) { toggleSyntaxHighlight(editor); return true } },
+        { key: 'Escape', run(editor) {
+          if (!settings.vim || vimIsNormal(editor)) { openSettings(); return true }
+          return false
+        } },
+        { key: 'Shift-Enter', run() { setSettings({ ...settings, syntaxHighlighting: !settings.syntaxHighlighting }); return true } },
         { key: 'Ctrl-Enter', run(editor) {
           const { state } = editor
           const selection = state.selection.main
@@ -149,6 +233,8 @@ const view = new EditorView({
       EditorView.domEventHandlers({
         keydown(event, editor) {
           if (event.isComposing || event.key === 'Process') return false
+          if (!settings.notedKeyboard) return false
+          if (settings.vim && !getCM(editor)?.state.vim?.insertMode) return false
           if (isLayoutModifier(event.code)) { modifierChange(event, true); event.preventDefault(); return true }
           const altGraph = held.mod4Alt || event.getModifierState('AltGraph')
           if (event.metaKey || (event.ctrlKey && !altGraph) || (event.altKey && !altGraph)) return false
@@ -165,7 +251,10 @@ const view = new EditorView({
           event.preventDefault()
           return translated.kind === 'text' ? (insert(editor, translated.value), true) : runCommand(editor, translated.value, event.shiftKey)
         },
-        keyup(event) { if (modifierChange(event, false)) { event.preventDefault(); return true } return false },
+        keyup(event) {
+          if (!settings.notedKeyboard) return false
+          if (modifierChange(event, false)) { event.preventDefault(); return true } return false
+        },
         blur() { held.mod3Caps = held.mod3Right = held.mod4Angle = held.mod4Alt = false }
       }),
       EditorView.updateListener.of(update => {
