@@ -54,7 +54,7 @@ test('uses distinct bright colors for dark-mode syntax tokens', async ({ page })
   )).toEqual(expect.arrayContaining(['rgb(255, 155, 242)', 'rgb(185, 246, 165)', 'rgb(184, 192, 204)']))
 })
 
-test('Shift+Enter toggles syntax highlighting without changing text or inserting a newline', async ({ page }) => {
+test('Shift+Enter opens settings and toggles syntax there without inserting a newline', async ({ page }) => {
   const editor = page.locator('.cm-content')
   const text = 'const greeting = "hello world"; // readable comment'
   await editor.fill(text)
@@ -62,28 +62,34 @@ test('Shift+Enter toggles syntax highlighting without changing text or inserting
     elements.map(element => getComputedStyle(element).color)
   )
   await expect.poll(tokenColors).toContain('rgb(255, 155, 242)')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.keyboard.press('Shift+Enter')
+  await page.keyboard.press('Space')
+  await page.keyboard.press('Escape')
   await expect(editor).toHaveText(text)
   await expect.poll(tokenColors).not.toContain('rgb(255, 155, 242)')
   await editor.fill('const updated = "highlight me";')
   await expect.poll(tokenColors).not.toContain('rgb(255, 155, 242)')
   await page.keyboard.press('Shift+Enter')
+  await page.keyboard.press('Space')
+  await page.keyboard.press('Shift+Enter')
   await expect(editor).toHaveText('const updated = "highlight me";')
   await expect.poll(tokenColors).toContain('rgb(255, 155, 242)')
 })
 
-test('opens and operates the three-toggle settings using only the keyboard', async ({ page }) => {
+test('opens and operates the four-toggle settings using only the keyboard', async ({ page }) => {
   const editor = page.locator('.cm-content')
   await editor.fill('unchanged text')
   await page.keyboard.press('Control+Home')
   await page.keyboard.press('Shift+ArrowRight')
 
-  await page.keyboard.press('Escape')
+  await page.keyboard.press('Shift+Enter')
   const dialog = page.getByRole('dialog', { name: 'Einstellungen' })
   await expect(dialog).toBeVisible()
   const toggles = dialog.getByRole('switch')
-  await expect(toggles).toHaveCount(3)
-  await expect(toggles).toHaveText(['Syntaxhervorhebungan', 'Noted-Tastaturemulationan', 'Vimaus'])
+  await expect(toggles).toHaveCount(4)
+  await expect(toggles).toHaveText(['Syntaxhervorhebungan', 'Noted-Tastaturemulationan', 'Vimaus', 'Relative Zeilennummernaus'])
   await expect(toggles.nth(0)).toBeFocused()
   await page.keyboard.press('ArrowDown')
   await expect(toggles.nth(1)).toBeFocused()
@@ -103,14 +109,14 @@ test('persists overlay settings across reload and restores syntax highlighting',
   await editor.fill('const greeting = "hello";')
   await expect.poll(() => editor.locator('span').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).color)))
     .toContain('rgb(255, 155, 242)')
-  await page.keyboard.press('Escape')
+  await page.keyboard.press('Shift+Enter')
   await page.keyboard.press('Space')
   await page.keyboard.press('Escape')
   await expect.poll(() => editor.locator('span').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).color)))
     .not.toContain('rgb(255, 155, 242)')
 
   await page.reload()
-  await page.keyboard.press('Escape')
+  await page.keyboard.press('Shift+Enter')
   await expect(page.getByRole('switch').nth(0)).toHaveAttribute('aria-checked', 'false')
   await page.keyboard.press('Space')
   await page.keyboard.press('Escape')
@@ -118,17 +124,38 @@ test('persists overlay settings across reload and restores syntax highlighting',
     .toContain('rgb(255, 155, 242)')
 })
 
+test('relative line numbers follow the cursor and persist after reload', async ({ page }) => {
+  const editor = page.locator('.cm-content')
+  await editor.fill('one\ntwo\nthree\nfour')
+  await page.keyboard.press('Shift+Enter')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Space')
+  await page.keyboard.press('Escape')
+  const numbers = page.locator('.cm-lineNumbers .cm-gutterElement:visible')
+  await expect(numbers).toHaveText(['3', '2', '1', '4'])
+  await page.keyboard.press('Control+Home')
+  await expect(numbers).toHaveText(['1', '1', '2', '3'])
+  await page.keyboard.press('ArrowDown')
+  await expect(numbers).toHaveText(['1', '2', '1', '2'])
+  await page.reload()
+  await expect(page.locator('.cm-lineNumbers .cm-gutterElement:visible')).toHaveText(['1', '1', '2', '3'])
+  await page.keyboard.press('Shift+Enter')
+  await expect(page.getByRole('switch').nth(3)).toHaveAttribute('aria-checked', 'true')
+})
+
 test('turns physical Noted emulation off and back on immediately', async ({ page }) => {
   const editor = page.locator('.cm-content')
   await page.keyboard.press('KeyQ')
   await expect(editor).toHaveText('z')
-  await page.keyboard.press('Escape')
+  await page.keyboard.press('Shift+Enter')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Enter')
   await page.keyboard.press('Escape')
   await page.keyboard.press('KeyQ')
   await expect(editor).toHaveText('zq')
-  await page.keyboard.press('Escape')
+  await page.keyboard.press('Shift+Enter')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Space')
   await page.keyboard.press('Escape')
@@ -136,10 +163,10 @@ test('turns physical Noted emulation off and back on immediately', async ({ page
   await expect(editor).toHaveText('zqz')
 })
 
-test('supports Vim insert, normal movement, visual mode, and settings Escape', async ({ page }) => {
+test('supports Vim insert, normal movement, visual mode, and Shift+Enter settings', async ({ page }) => {
   const editor = page.locator('.cm-content')
   await editor.fill('abc')
-  await page.keyboard.press('Escape')
+  await page.keyboard.press('Shift+Enter')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Space')
@@ -155,14 +182,14 @@ test('supports Vim insert, normal movement, visual mode, and settings Escape', a
   await expect(page.locator('.cm-selectionBackground')).not.toHaveCount(0)
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await page.keyboard.press('Escape')
+  await page.keyboard.press('Shift+Enter')
   await expect(page.getByRole('dialog', { name: 'Einstellungen' })).toBeVisible()
   await expect(editor).toHaveText('abci')
 })
 
 test('Vim insert mode keeps Noted emulation when both switches are on', async ({ page }) => {
   const editor = page.locator('.cm-content')
-  await page.keyboard.press('Escape')
+  await page.keyboard.press('Shift+Enter')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Space')
@@ -170,17 +197,20 @@ test('Vim insert mode keeps Noted emulation when both switches are on', async ({
   await page.keyboard.press('KeyD') // Noted i enters Vim insert mode
   await page.keyboard.press('KeyQ')
   await expect(editor).toHaveText('z')
+  await page.keyboard.press('Shift+Enter')
+  await expect(page.getByRole('dialog', { name: 'Einstellungen' })).toBeVisible()
+  await page.keyboard.press('Escape')
   await page.keyboard.press('Escape')
   await page.keyboard.press('KeyH')
   await expect(editor).toHaveText('z')
-  await page.keyboard.press('Escape')
+  await page.keyboard.press('Shift+Enter')
   await expect(page.getByRole('dialog', { name: 'Einstellungen' })).toBeVisible()
 })
 
 test('Vim receives Noted-translated commands before handling normal-mode keys', async ({ page }) => {
   const editor = page.locator('.cm-content')
   await editor.fill('abc')
-  await page.keyboard.press('Escape')
+  await page.keyboard.press('Shift+Enter')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Space')
@@ -191,8 +221,38 @@ test('Vim receives Noted-translated commands before handling normal-mode keys', 
   await expect(editor).toHaveText('abzc')
 })
 
-test('Noted Mod4 navigation and Enter control the Escape settings', async ({ page }) => {
+test('Vim command prompt uses Noted letters and the dark editor theme', async ({ page }) => {
+  await page.keyboard.press('Shift+Enter')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Space')
   await page.keyboard.press('Escape')
+  await page.keyboard.down('Quote') // Noted Mod3
+  await page.keyboard.press('Semicolon') // Noted :
+  await page.keyboard.up('Quote')
+  const prompt = page.locator('.cm-vim-panel input')
+  await expect(prompt).toBeFocused()
+  await page.keyboard.press('KeyQ')
+  await page.keyboard.press('KeyW')
+  await expect(prompt).toHaveValue('zy')
+  await page.keyboard.down('AltRight')
+  await page.keyboard.press('KeyW') // Noted Backspace
+  await expect(prompt).toHaveValue('z')
+  await page.keyboard.up('AltRight')
+  const colors = await prompt.evaluate(input => ({
+    foreground: getComputedStyle(input).color,
+    background: getComputedStyle(input.closest('.cm-vim-panel')!).backgroundColor,
+    panel: getComputedStyle(input.closest('.cm-panels')!).backgroundColor
+  }))
+  expect(colors).toEqual({ foreground: 'rgb(244, 244, 245)', background: 'rgb(0, 0, 0)', panel: 'rgb(0, 0, 0)' })
+  await page.keyboard.down('AltRight')
+  await page.keyboard.press('KeyZ') // Noted Escape
+  await page.keyboard.up('AltRight')
+  await expect(prompt).toHaveCount(0)
+})
+
+test('Noted Mod4 navigation and Enter control the settings', async ({ page }) => {
+  await page.keyboard.press('Shift+Enter')
   const switches = page.getByRole('dialog').getByRole('switch')
   await expect(switches.nth(0)).toBeFocused()
   await page.keyboard.down('AltRight')
@@ -207,7 +267,7 @@ test('Noted Mod4 navigation and Enter control the Escape settings', async ({ pag
 })
 
 test('restores Vim and emulation preferences after reload', async ({ page }) => {
-  await page.keyboard.press('Escape')
+  await page.keyboard.press('Shift+Enter')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Space')
   await page.keyboard.press('ArrowDown')
@@ -220,7 +280,7 @@ test('restores Vim and emulation preferences after reload', async ({ page }) => 
   await page.keyboard.press('KeyQ')
   await expect(editor).toHaveText('q')
   await page.keyboard.press('Escape')
-  await page.keyboard.press('Escape')
+  await page.keyboard.press('Shift+Enter')
   await expect(page.getByRole('switch').nth(1)).toHaveAttribute('aria-checked', 'false')
   await expect(page.getByRole('switch').nth(2)).toHaveAttribute('aria-checked', 'true')
 })

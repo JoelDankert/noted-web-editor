@@ -1,6 +1,6 @@
 import './style.css'
 import { EditorState, Compartment, Prec, type Extension } from '@codemirror/state'
-import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, drawSelection } from '@codemirror/view'
+import { EditorView, keymap, lineNumbers, gutter, GutterMarker, highlightActiveLineGutter, drawSelection } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, deleteCharBackward, deleteCharForward, cursorCharLeft, cursorCharRight, cursorLineUp, cursorLineDown, cursorLineBoundaryBackward, cursorLineBoundaryForward, cursorPageUp, cursorPageDown, selectCharLeft, selectCharRight, selectLineUp, selectLineDown, selectLineBoundaryBackward, selectLineBoundaryForward, selectPageUp, selectPageDown } from '@codemirror/commands'
 import { bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language'
 import hljs from 'highlight.js/lib/core'
@@ -27,7 +27,9 @@ app.innerHTML = `<main><div id="editor" aria-label="Noted Texteditor"></div></ma
 const languageSlot = new Compartment()
 const highlightSlot = new Compartment()
 const vimSlot = new Compartment()
+const lineNumberSlot = new Compartment()
 const held = { mod3Caps: false, mod3Right: false, mod4Angle: false, mod4Alt: false }
+const relayedPanelKeys = new WeakSet<KeyboardEvent>()
 let settings = restoreSettings()
 let highlightGeneration = 0
 let detectionTimer = 0
@@ -71,10 +73,10 @@ function runCommand(view: EditorView, value: string, shift: boolean): boolean {
   if (value === 'Tab') { insert(view, '\t'); return true }
   if (value === 'Enter') { insert(view, '\n'); return true }
   if (value === 'Escape') {
-    if (settings.vim && !vimIsNormal(view)) {
+    if (settings.vim) {
       const cm = getCM(view)
       if (cm) Vim.handleKey(cm, '<Esc>', 'user')
-    } else openSettings()
+    }
     return true
   }
   if (value === 'Insert') return true
@@ -102,6 +104,31 @@ function setSettings(next: EditorSettings) {
   saveSettings(settings)
   if (previous.syntaxHighlighting !== settings.syntaxHighlighting) configureSyntaxHighlighting()
   if (previous.vim !== settings.vim) view.dispatch({ effects: vimSlot.reconfigure(settings.vim ? vim() : []) })
+  if (previous.relativeLineNumbers !== settings.relativeLineNumbers) view.dispatch({ effects: lineNumberSlot.reconfigure(numberGutter()) })
+}
+
+class RelativeNumber extends GutterMarker {
+  constructor(readonly label: string) { super() }
+  eq(other: GutterMarker) { return other instanceof RelativeNumber && other.label === this.label }
+  toDOM() { return document.createTextNode(this.label) }
+}
+
+function numberGutter(): Extension {
+  if (!settings.relativeLineNumbers) return lineNumbers()
+  return gutter({
+    class: 'cm-lineNumbers',
+    lineMarker(view, line) {
+      const current = view.state.doc.lineAt(view.state.selection.main.head).number
+      const number = view.state.doc.lineAt(line.from).number
+      return new RelativeNumber(String(number === current ? number : Math.abs(number - current)))
+    },
+    lineMarkerChange: update => update.selectionSet || update.docChanged,
+    initialSpacer: view => new RelativeNumber('9'.repeat(String(view.state.doc.lines).length)),
+    updateSpacer(spacer, update) {
+      const width = String(update.state.doc.lines).length
+      return spacer instanceof RelativeNumber && spacer.label.length === width ? spacer : new RelativeNumber('9'.repeat(width))
+    }
+  })
 }
 
 function configureSyntaxHighlighting() {
@@ -144,7 +171,8 @@ async function detectLanguage(text: string) {
 const settingRows: ReadonlyArray<{ key: keyof EditorSettings, label: string }> = [
   { key: 'syntaxHighlighting', label: 'Syntaxhervorhebung' },
   { key: 'notedKeyboard', label: 'Noted-Tastaturemulation' },
-  { key: 'vim', label: 'Vim' }
+  { key: 'vim', label: 'Vim' },
+  { key: 'relativeLineNumbers', label: 'Relative Zeilennummern' }
 ]
 
 const settingsRoot = document.querySelector<HTMLDivElement>('#settings-root')!
@@ -180,6 +208,7 @@ function renderSettings(activeIndex = 0) {
   })
   overlay.append(list)
   overlay.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && event.shiftKey) { event.preventDefault(); closeSettings(); return }
     if (settings.notedKeyboard && isLayoutModifier(event.code)) {
       modifierChange(event, true)
       event.preventDefault()
@@ -225,25 +254,16 @@ function openSettings() {
   renderSettings()
 }
 
-function vimIsNormal(editor: EditorView): boolean {
-  const state = getCM(editor)?.state.vim
-  return !state || (!state.insertMode && !state.visualMode)
-}
-
 const view = new EditorView({
   parent: document.querySelector('#editor')!,
   state: EditorState.create({
     doc: restoreDocument(),
     extensions: [
-      lineNumbers(), highlightActiveLineGutter(), history(), drawSelection(), indentOnInput(), bracketMatching(),
+      lineNumberSlot.of(numberGutter()), highlightActiveLineGutter(), history(), drawSelection(), indentOnInput(), bracketMatching(),
       highlightSlot.of(settings.syntaxHighlighting ? syntaxHighlighting(darkHighlightStyle, { fallback: true }) : []),
       vimSlot.of(settings.vim ? vim() : []),
       Prec.highest(keymap.of([
-        { key: 'Escape', run(editor) {
-          if (!settings.vim || vimIsNormal(editor)) { openSettings(); return true }
-          return false
-        } },
-        { key: 'Shift-Enter', run() { setSettings({ ...settings, syntaxHighlighting: !settings.syntaxHighlighting }); return true } },
+        { key: 'Shift-Enter', run() { openSettings(); return true } },
         { key: 'Ctrl-Enter', run(editor) {
           const { state } = editor
           const selection = state.selection.main
@@ -282,8 +302,7 @@ const view = new EditorView({
               Backspace: '<BS>', Delete: '<Del>', Enter: '<CR>', Tab: '<Tab>', Escape: '<Esc>', Undo: 'u'
             }
             const vimKey = translated.kind === 'text' ? translated.value : vimCommands[translated.value]
-            if (translated.value === 'Escape') openSettings()
-            else if (vimKey) Vim.handleKey(cm, vimKey, 'user')
+            if (vimKey) Vim.handleKey(cm, vimKey, 'user')
             return true
           }
           return translated.kind === 'text' ? (insert(editor, translated.value), true) : runCommand(editor, translated.value, event.shiftKey)
@@ -305,6 +324,47 @@ const view = new EditorView({
     ]
   })
 })
+
+// Vim's : and / prompts are native inputs in a panel, outside the editor's
+// key handler. Translate their physical keys with the same Noted layout.
+view.dom.addEventListener('keydown', event => {
+  const input = event.target
+  if (!(input instanceof HTMLInputElement) || !input.closest('.cm-vim-panel') || !settings.notedKeyboard || relayedPanelKeys.has(event) || event.isComposing) return
+  if (isLayoutModifier(event.code)) { modifierChange(event, true); event.preventDefault(); return }
+  const altGraph = held.mod4Alt || event.getModifierState('AltGraph')
+  if (event.metaKey || (event.ctrlKey && !altGraph) || (event.altKey && !altGraph)) return
+  // Real Enter and Escape must reach Vim's dialog handler (submit/cancel).
+  if (event.code === 'Enter' || event.code === 'Escape') return
+  const mapped = translateCode(event.code, {
+    shift: event.shiftKey, mod3: held.mod3Caps || held.mod3Right,
+    mod4: held.mod4Angle || held.mod4Alt || altGraph,
+    ctrl: event.ctrlKey && !altGraph, meta: event.metaKey, composing: event.isComposing
+  })
+  if (!mapped) {
+    if (isMappedCode(event.code)) { event.preventDefault(); event.stopImmediatePropagation() }
+    return
+  }
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  if (mapped.kind === 'text' || mapped.value === 'Backspace' || mapped.value === 'Delete') {
+    const start = input.selectionStart ?? input.value.length
+    const end = input.selectionEnd ?? start
+    const from = mapped.value === 'Backspace' && start === end ? Math.max(0, start - 1) : start
+    const to = mapped.value === 'Delete' && start === end ? Math.min(input.value.length, end + 1) : end
+    input.setRangeText(mapped.kind === 'text' ? mapped.value : '', from, to, 'end')
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: mapped.kind === 'text' ? 'insertText' : 'deleteContentBackward', data: mapped.kind === 'text' ? mapped.value : null }))
+    return
+  }
+  const keyCodes: Record<string, number> = { Enter: 13, Escape: 27, ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39, Home: 36, End: 35, PageUp: 33, PageDown: 34, Tab: 9 }
+  if (keyCodes[mapped.value]) {
+    const relayed = new KeyboardEvent('keydown', { key: mapped.value, code: mapped.value, keyCode: keyCodes[mapped.value], bubbles: true, cancelable: true })
+    relayedPanelKeys.add(relayed)
+    input.dispatchEvent(relayed)
+  }
+}, true)
+view.dom.addEventListener('keyup', event => {
+  if (event.target instanceof HTMLInputElement && event.target.closest('.cm-vim-panel') && settings.notedKeyboard && modifierChange(event, false)) event.preventDefault()
+}, true)
 
 window.addEventListener('pagehide', flushDocument)
 if (view.state.doc.length) detectionTimer = window.setTimeout(() => { void detectLanguage(view.state.doc.toString()) }, 0)

@@ -12,6 +12,9 @@ body { min-height: 100vh; background: #000; }
 .cm-cursor { border-left-color: #b8b7ff !important; }
 .cm-selectionBackground, ::selection { background: #5f5db488 !important; }
 .cm-content { caret-color: #b8b7ff; padding: 14px 0; }
+.cm-editor .cm-panels { background: #000; color: #f4f4f5; border: 0; }
+.cm-editor .cm-vim-panel { min-height: 30px; align-items: center; padding: 4px 12px; background: #000; border-top: 1px solid #1e1f21; color: #f4f4f5; font: inherit; }
+.cm-editor .cm-vim-panel input { width: 100%; min-width: 0; background: transparent; color: #f4f4f5; caret-color: #b8b7ff; border: 0; outline: none; font: inherit; }
 @media (max-width: 680px) { .cm-editor { font-size: 13px; } }
 .settings-overlay { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: #000; }
 .settings-list { width: min(100%, 430px); }
