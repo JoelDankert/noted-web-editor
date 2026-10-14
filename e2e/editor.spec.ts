@@ -67,7 +67,6 @@ test('Shift+Enter opens settings and toggles syntax there without inserting a ne
   await page.keyboard.press('Shift+Enter')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Space')
   await page.keyboard.press('Escape')
   await expect(editor).toHaveText(text)
@@ -75,7 +74,6 @@ test('Shift+Enter opens settings and toggles syntax there without inserting a ne
   await editor.fill('const updated = "highlight me";')
   await expect.poll(tokenColors).not.toContain('rgb(255, 155, 242)')
   await page.keyboard.press('Shift+Enter')
-  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Space')
@@ -100,7 +98,6 @@ test('opens and operates the four-toggle settings using only the keyboard', asyn
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('ArrowDown')
   await expect(toggles.nth(1)).toBeFocused()
   await page.keyboard.press('Space')
   await expect(dialog.getByRole('switch').nth(1)).toHaveAttribute('aria-checked', 'false')
@@ -121,7 +118,6 @@ test('persists overlay settings across reload and restores syntax highlighting',
   await page.keyboard.press('Shift+Enter')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Space')
   await page.keyboard.press('Escape')
   await expect.poll(() => editor.locator('span').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).color)))
@@ -130,7 +126,6 @@ test('persists overlay settings across reload and restores syntax highlighting',
   await page.reload()
   await page.keyboard.press('Shift+Enter')
   await expect(page.getByRole('switch').nth(0)).toHaveAttribute('aria-checked', 'false')
-  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Space')
@@ -143,7 +138,6 @@ test('relative line numbers follow the cursor and persist after reload', async (
   const editor = page.locator('.cm-content')
   await editor.fill('one\ntwo\nthree\nfour')
   await page.keyboard.press('Shift+Enter')
-  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
@@ -171,13 +165,11 @@ test('turns physical Noted emulation off and back on immediately', async ({ page
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Enter')
   await page.keyboard.press('Escape')
   await page.keyboard.press('KeyQ')
   await expect(editor).toHaveText('zq')
   await page.keyboard.press('Shift+Enter')
-  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
@@ -191,7 +183,6 @@ test('supports Vim insert, normal movement, visual mode, and Shift+Enter setting
   const editor = page.locator('.cm-content')
   await editor.fill('abc')
   await page.keyboard.press('Shift+Enter')
-  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
@@ -221,7 +212,6 @@ test('Vim insert mode keeps Noted emulation when both switches are on', async ({
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Space')
   await page.keyboard.press('Escape')
   await page.keyboard.press('KeyD') // Noted i enters Vim insert mode
@@ -245,7 +235,6 @@ test('Vim receives Noted-translated commands before handling normal-mode keys', 
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Space')
   await page.keyboard.press('Escape')
   await page.keyboard.press('Semicolon') // Noted h: move one character left
@@ -256,7 +245,6 @@ test('Vim receives Noted-translated commands before handling normal-mode keys', 
 
 test('Vim command prompt uses Noted letters and the dark editor theme', async ({ page }) => {
   await page.keyboard.press('Shift+Enter')
-  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
@@ -296,7 +284,6 @@ test('Noted Mod4 navigation and Enter control the settings', async ({ page }) =>
   await page.keyboard.press('KeyD') // Noted ArrowDown
   await page.keyboard.press('KeyD') // Noted ArrowDown
   await page.keyboard.press('KeyD') // Noted ArrowDown
-  await page.keyboard.press('KeyD') // Noted ArrowDown
   await page.keyboard.press('KeyV') // Noted Enter
   await page.keyboard.up('AltRight')
   await expect(switches.nth(2)).toBeFocused()
@@ -307,7 +294,6 @@ test('Noted Mod4 navigation and Enter control the settings', async ({ page }) =>
 
 test('restores Vim and emulation preferences after reload', async ({ page }) => {
   await page.keyboard.press('Shift+Enter')
-  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')

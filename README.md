@@ -40,7 +40,7 @@ Die separate Windows-AHK-Umsetzung [JoelDankert/noted-layout-windows-ahk](https:
 - Tote Tasten und XKB-Compose können im Browser nicht zuverlässig vollständig nachgebildet werden; Compose sowie Noted-Ebenen 5/6 sind bewusst nicht implementiert. Tote-Tasten-Zuordnungen werden deshalb nicht vorgetäuscht.
 - AltGr erscheint je nach Plattform als `AltGraph`, `AltRight` oder als Ctrl+Alt. Die App berücksichtigt die üblichen Varianten, kann aber nicht jede Browser-/Remote-Desktop-Kombination garantieren.
 - Die automatische Spracherkennung beginnt erst bei ausreichend Text, ist gedrosselt und wechselt nur bei einem plausiblen Ergebnis. Unterstützt werden JavaScript/TypeScript, JSON, Python, HTML/XML, CSS, Markdown, Java, C/C++, Rust und SQL; unbekannter oder kurzer Inhalt bleibt Nur Text.
-- Der Text wird im Browser als Entwurf zwischengespeichert; über „Datei öffnen“ kannst du lokale Dateien laden. „Datei speichern“ öffnet in unterstützten Desktop-Browsern jedes Mal den nativen „Speichern unter“-Dialog, damit du Name und Ort selbst bestimmst. Wenn der Browser den Dialog nicht anbietet oder blockiert, wird der Grund im Einstellungsfenster angezeigt und kein Download gestartet. „Datei herunterladen“ ist eine getrennte Aktion; deren Zielort legen die Browser-Einstellungen fest. Es gibt keine Cloud-Speicherung.
+- Der Text wird im Browser als Entwurf zwischengespeichert; über „Datei öffnen“ kannst du lokale Dateien laden. „Datei speichern“ lädt den Text als lokale `.txt`-Datei herunter. Der Download-Ordner oder eine Rückfrage zum Speicherort werden in den Browser-Einstellungen festgelegt. Es gibt keine Cloud-Speicherung.
 
 ## GitHub Pages
 

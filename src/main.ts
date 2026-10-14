@@ -39,13 +39,6 @@ let pendingText: string | null = null
 let currentLanguage = 'plaintext'
 let currentFileName = 'notiz.txt'
 
-type SavePickerWindow = Window & {
-  showSaveFilePicker?: (options?: {
-    suggestedName?: string
-    types?: Array<{ description?: string, accept: Record<string, string[]> }>
-  }) => Promise<FileSystemFileHandle>
-}
-
 for (const [name, grammar] of Object.entries({ javascript: javascriptGrammar, typescript: typescriptGrammar, json: jsonGrammar, python: pythonGrammar, xml: xmlGrammar, css: cssGrammar, markdown: markdownGrammar, java: javaGrammar, cpp: cppGrammar, rust: rustGrammar, sql: sqlGrammar })) {
   hljs.registerLanguage(name, grammar)
 }
@@ -272,44 +265,7 @@ function downloadText(text: string) {
   closeSettings()
 }
 
-function isPickerCancellation(error: unknown): boolean {
-  return error instanceof DOMException && error.name === 'AbortError'
-}
-
-async function writeFile(handle: FileSystemFileHandle) {
-  const writable = await handle.createWritable()
-  await writable.write(view.state.doc.toString())
-  await writable.close()
-}
-
-async function chooseSaveFile(): Promise<FileSystemFileHandle> {
-  const picker = (window as SavePickerWindow).showSaveFilePicker
-  if (!picker) throw new Error('Dieser Browser unterstützt keinen Speichern-unter-Dialog. Nutze stattdessen „Datei herunterladen“ oder öffne Noted in Chrome oder Edge auf dem PC.')
-  return picker.call(window, {
-    suggestedName: currentFileName,
-    types: [{ description: 'Textdatei', accept: { 'text/plain': ['.txt'] } }]
-  })
-}
-
-async function saveFile() {
-  showSettingsStatus('')
-  let handle: FileSystemFileHandle
-  try { handle = await chooseSaveFile() }
-  catch (error) {
-    if (isPickerCancellation(error)) return
-    showSettingsStatus(`Speichern unter nicht verfügbar: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}. Kein Download gestartet.`)
-    return
-  }
-  try {
-    await writeFile(handle)
-    currentFileName = handle.name
-    closeSettings()
-  } catch (error) {
-    showSettingsStatus(fileError(error))
-  }
-}
-
-function downloadFile() {
+function saveFile() {
   showSettingsStatus('')
   try { downloadText(view.state.doc.toString()) }
   catch (error) { showSettingsStatus(fileError(error)) }
@@ -336,7 +292,7 @@ function renderSettings(activeIndex = 0) {
   overlay.setAttribute('aria-label', 'Einstellungen')
   const list = document.createElement('div')
   list.className = 'settings-list'
-  for (const [label, action] of [['Datei öffnen', openFile], ['Datei speichern', saveFile], ['Datei herunterladen', downloadFile]] as const) {
+  for (const [label, action] of [['Datei öffnen', openFile], ['Datei speichern', saveFile]] as const) {
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'settings-action'
@@ -354,7 +310,7 @@ function renderSettings(activeIndex = 0) {
     button.innerHTML = `<span>${label}</span><span aria-hidden="true">${settings[key] ? 'an' : 'aus'}</span>`
     button.addEventListener('click', () => {
       setSettings({ ...settings, [key]: !settings[key] })
-      renderSettings(index + 3)
+      renderSettings(index + 2)
     })
     list.append(button)
   })
