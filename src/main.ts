@@ -38,7 +38,6 @@ let saveTimer = 0
 let pendingText: string | null = null
 let currentLanguage = 'plaintext'
 let currentFileName = 'notiz.txt'
-let currentFileHandle: FileSystemFileHandle | null = null
 
 type SavePickerWindow = Window & {
   showSaveFilePicker?: (options?: {
@@ -254,7 +253,6 @@ function replaceWithOpenedText(text: string, fileName: string) {
   if (current && current !== text && !window.confirm('Aktuellen Text ersetzen?')) return
   view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: text.length } })
   currentFileName = fileName
-  currentFileHandle = null
   closeSettings()
 }
 
@@ -284,33 +282,26 @@ async function writeFile(handle: FileSystemFileHandle) {
   await writable.close()
 }
 
-async function chooseSaveFile(): Promise<FileSystemFileHandle | null> {
+async function chooseSaveFile(): Promise<FileSystemFileHandle> {
   const picker = (window as SavePickerWindow).showSaveFilePicker
-  if (!picker) return null
+  if (!picker) throw new Error('Dieser Browser unterstützt keinen Speichern-unter-Dialog. Nutze stattdessen „Datei herunterladen“ oder öffne Noted in Chrome oder Edge auf dem PC.')
   return picker.call(window, {
     suggestedName: currentFileName,
     types: [{ description: 'Textdatei', accept: { 'text/plain': ['.txt'] } }]
   })
 }
 
-async function saveFileAs() {
+async function saveFile() {
   showSettingsStatus('')
-  let handle: FileSystemFileHandle | null
+  let handle: FileSystemFileHandle
   try { handle = await chooseSaveFile() }
   catch (error) {
     if (isPickerCancellation(error)) return
-    try { downloadText(view.state.doc.toString()) }
-    catch (downloadError) { showSettingsStatus(fileError(downloadError)) }
-    return
-  }
-  if (!handle) {
-    try { downloadText(view.state.doc.toString()) }
-    catch (error) { showSettingsStatus(fileError(error)) }
+    showSettingsStatus(`Speichern unter nicht verfügbar: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}. Kein Download gestartet.`)
     return
   }
   try {
     await writeFile(handle)
-    currentFileHandle = handle
     currentFileName = handle.name
     closeSettings()
   } catch (error) {
@@ -318,18 +309,10 @@ async function saveFileAs() {
   }
 }
 
-async function saveFile() {
-  if (!currentFileHandle) {
-    await saveFileAs()
-    return
-  }
+function downloadFile() {
   showSettingsStatus('')
-  try {
-    await writeFile(currentFileHandle)
-    closeSettings()
-  } catch (error) {
-    showSettingsStatus(fileError(error))
-  }
+  try { downloadText(view.state.doc.toString()) }
+  catch (error) { showSettingsStatus(fileError(error)) }
 }
 
 fallbackOpenInput.addEventListener('change', () => {
@@ -353,7 +336,7 @@ function renderSettings(activeIndex = 0) {
   overlay.setAttribute('aria-label', 'Einstellungen')
   const list = document.createElement('div')
   list.className = 'settings-list'
-  for (const [label, action] of [['Datei öffnen', openFile], ['Datei speichern', saveFile], ['Speichern unter', saveFileAs]] as const) {
+  for (const [label, action] of [['Datei öffnen', openFile], ['Datei speichern', saveFile], ['Datei herunterladen', downloadFile]] as const) {
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'settings-action'
