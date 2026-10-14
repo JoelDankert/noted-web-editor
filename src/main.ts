@@ -23,7 +23,7 @@ import { restoreSettings, saveSettings, type EditorSettings } from './settings-s
 import { evaluateExpression } from './expression'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
-app.innerHTML = `<main><div id="editor" aria-label="Noted Texteditor"></div></main><div id="settings-root"></div><input id="file-open-fallback" type="file" accept=".txt,text/plain" hidden>`
+app.innerHTML = `<main><div id="editor" aria-label="Noted Texteditor"></div></main><div id="typing-speed" data-testid="typing-speed" aria-live="polite" hidden>0 WPM</div><div id="settings-root"></div><input id="file-open-fallback" type="file" accept=".txt,text/plain" hidden>`
 
 const languageSlot = new Compartment()
 const highlightSlot = new Compartment()
@@ -38,6 +38,25 @@ let saveTimer = 0
 let pendingText: string | null = null
 let currentLanguage = 'plaintext'
 let currentFileName = 'notiz.txt'
+const typingSpeedElement = document.querySelector<HTMLElement>('#typing-speed')!
+let typingStartedAt: number | null = null
+let typedCharacters = 0
+
+const germanWords = [
+  'abend', 'abstand', 'acker', 'adresse', 'affe', 'alltag', 'ampel', 'apfel', 'arbeit', 'atem', 'auge', 'auto', 'bach', 'bahn', 'ball', 'baum', 'becher', 'berg', 'bild', 'blatt', 'blume', 'boden', 'boot', 'brot', 'brücke', 'buch', 'bühne', 'dach', 'dampf', 'dorf', 'durst', 'ecke', 'ei', 'eimer', 'eis', 'eltern', 'ende', 'engel', 'erde', 'farbe', 'feder', 'feld', 'fenster', 'feuer', 'finger', 'fisch', 'fluss', 'frage', 'frost', 'frühling', 'fuß', 'garten', 'gasse', 'geist', 'geld', 'gesicht', 'glas', 'glück', 'gras', 'grenze', 'großstadt', 'grund', 'hafen', 'hand', 'haus', 'heft', 'herbst', 'herz', 'himmel', 'holz', 'hund', 'hut', 'idee', 'insel', 'jahr', 'karte', 'keller', 'kind', 'kirche', 'kissen', 'klang', 'kleid', 'klippe', 'knopf', 'koffer', 'kopf', 'kraft', 'kreis', 'küche', 'lampe', 'land', 'lärm', 'laub', 'leben', 'lehrer', 'licht', 'lied', 'luft', 'maus', 'meer', 'mensch', 'mittag', 'mond', 'morgen', 'musik', 'nacht', 'nadel', 'nebel', 'netz', 'ofen', 'ort', 'papier', 'park', 'pfad', 'pferd', 'pflanze', 'platz', 'post', 'preis', 'punkt', 'rad', 'radio', 'regen', 'reise', 'ring', 'rock', 'rolle', 'rose', 'salz', 'sand', 'satz', 'schule', 'see', 'segel', 'seite', 'sommer', 'sonne', 'spiel', 'spur', 'stadt', 'stahl', 'stern', 'stimme', 'straße', 'strom', 'stuhl', 'tag', 'tal', 'tanz', 'tee', 'teich', 'tisch', 'tor', 'traum', 'tür', 'uhr', 'vater', 'vogel', 'wald', 'wand', 'wasser', 'weg', 'wein', 'welt', 'wiese', 'wind', 'winter', 'wort', 'wunder', 'zahn', 'zeit', 'zelt', 'ziel', 'zimmer', 'zunge', 'zug'
+] as const
+
+function nextPracticeWords(previousFirst?: string): string[] {
+  const words: string[] = []
+  while (words.length < 5) {
+    const word = germanWords[Math.floor(Math.random() * germanWords.length)]
+    if ((words.length === 0 && word === previousFirst) || words.includes(word)) continue
+    words.push(word)
+  }
+  return words
+}
+
+let practiceWords = nextPracticeWords()
 
 for (const [name, grammar] of Object.entries({ javascript: javascriptGrammar, typescript: typescriptGrammar, json: jsonGrammar, python: pythonGrammar, xml: xmlGrammar, css: cssGrammar, markdown: markdownGrammar, java: javaGrammar, cpp: cppGrammar, rust: rustGrammar, sql: sqlGrammar })) {
   hljs.registerLanguage(name, grammar)
@@ -95,14 +114,54 @@ class ResultWidget extends WidgetType {
 }
 
 function resultDecorations(editor: EditorView): DecorationSet {
+  if (settings.typingPractice) return Decoration.none
   const result = expressionCompletion(editor)
   return result ? Decoration.set([Decoration.widget({ widget: new ResultWidget(result), side: 1 }).range(editor.state.selection.main.head)]) : Decoration.none
+}
+
+function practiceFragment(editor: EditorView): string {
+  const selection = editor.state.selection.main
+  if (!selection.empty) return ''
+  const line = editor.state.doc.lineAt(selection.head)
+  return line.text.slice(0, selection.head - line.from).split(/\s/).at(-1) ?? ''
+}
+
+class TypingPreviewWidget extends WidgetType {
+  constructor(readonly words: readonly string[]) { super() }
+  eq(other: TypingPreviewWidget) { return this.words.join(' ') === other.words.join(' ') }
+  toDOM() {
+    const preview = document.createElement('span')
+    preview.className = 'cm-typing-preview'
+    preview.dataset.testid = 'typing-preview'
+    preview.setAttribute('aria-hidden', 'true')
+    this.words.forEach((word, index) => {
+      const item = document.createElement('span')
+      item.className = 'typing-word'
+      item.textContent = `${index ? ' ' : ''}${word}`
+      preview.append(item)
+    })
+    return preview
+  }
+}
+
+function typingDecorations(editor: EditorView): DecorationSet {
+  if (!settings.typingPractice || !editor.state.selection.main.empty) return Decoration.none
+  const fragment = practiceFragment(editor).toLocaleLowerCase('de-DE')
+  const first = practiceWords[0]
+  const words = [first.startsWith(fragment) ? first.slice(fragment.length) : first, ...practiceWords.slice(1)]
+  return Decoration.set([Decoration.widget({ widget: new TypingPreviewWidget(words), side: 1 }).range(editor.state.selection.main.head)])
 }
 
 const expressionPreview = ViewPlugin.fromClass(class {
   decorations: DecorationSet
   constructor(editor: EditorView) { this.decorations = resultDecorations(editor) }
   update(update: ViewUpdate) { this.decorations = resultDecorations(update.view) }
+}, { decorations: plugin => plugin.decorations })
+
+const typingPreview = ViewPlugin.fromClass(class {
+  decorations: DecorationSet
+  constructor(editor: EditorView) { this.decorations = typingDecorations(editor) }
+  update(update: ViewUpdate) { this.decorations = typingDecorations(update.view) }
 }, { decorations: plugin => plugin.decorations })
 
 function acceptExpression(editor: EditorView): boolean {
@@ -149,6 +208,24 @@ function clearLanguage() {
   view.dispatch({ effects: languageSlot.reconfigure([]) })
 }
 
+function updateTypingSpeed() {
+  typingSpeedElement.hidden = !settings.typingSpeed
+  if (!settings.typingSpeed) return
+  if (typingStartedAt === null) { typingSpeedElement.textContent = '0 WPM'; return }
+  const minutes = Math.max((performance.now() - typingStartedAt) / 60_000, 1 / 60)
+  typingSpeedElement.textContent = `${Math.round((typedCharacters / 5) / minutes)} WPM`
+}
+
+function resetTypingSpeed() {
+  typingStartedAt = null
+  typedCharacters = 0
+  updateTypingSpeed()
+}
+
+function advancePractice() {
+  practiceWords = nextPracticeWords(practiceWords[0])
+}
+
 function setSettings(next: EditorSettings) {
   const previous = settings
   settings = next
@@ -156,6 +233,12 @@ function setSettings(next: EditorSettings) {
   if (previous.syntaxHighlighting !== settings.syntaxHighlighting) configureSyntaxHighlighting()
   if (previous.vim !== settings.vim) view.dispatch({ effects: vimSlot.reconfigure(settings.vim ? vim() : []) })
   if (previous.relativeLineNumbers !== settings.relativeLineNumbers) view.dispatch({ effects: lineNumberSlot.reconfigure(numberGutter()) })
+  if (previous.typingSpeed !== settings.typingSpeed) resetTypingSpeed()
+  if (previous.typingPractice !== settings.typingPractice) {
+    practiceWords = nextPracticeWords()
+    view.dispatch({})
+  }
+  updateTypingSpeed()
 }
 
 class RelativeNumber extends GutterMarker {
@@ -223,7 +306,9 @@ const settingRows: ReadonlyArray<{ key: keyof EditorSettings, label: string }> =
   { key: 'syntaxHighlighting', label: 'Syntaxhervorhebung' },
   { key: 'notedKeyboard', label: 'Noted-Tastaturemulation' },
   { key: 'vim', label: 'Vim' },
-  { key: 'relativeLineNumbers', label: 'Relative Zeilennummern' }
+  { key: 'relativeLineNumbers', label: 'Relative Zeilennummern' },
+  { key: 'typingSpeed', label: 'Tippgeschwindigkeit' },
+  { key: 'typingPractice', label: 'Tippübung' }
 ]
 
 const settingsRoot = document.querySelector<HTMLDivElement>('#settings-root')!
@@ -375,7 +460,7 @@ const view = new EditorView({
       lineNumberSlot.of(numberGutter()), highlightActiveLineGutter(), history(), drawSelection(), indentOnInput(), bracketMatching(),
       highlightSlot.of(settings.syntaxHighlighting ? syntaxHighlighting(darkHighlightStyle, { fallback: true }) : []),
       vimSlot.of(settings.vim ? vim() : []),
-      expressionPreview,
+      expressionPreview, typingPreview,
       Prec.highest(keymap.of([
         { key: 'Shift-Enter', run() { openSettings(); return true } },
         { key: 'Ctrl-Enter', run(editor) {
@@ -435,6 +520,24 @@ const view = new EditorView({
           scheduleSave(text)
           window.clearTimeout(detectionTimer)
           detectionTimer = window.setTimeout(() => { void detectLanguage(text) }, 450)
+
+          const inputTransactions = update.transactions.filter(transaction => transaction.isUserEvent('input'))
+          if (inputTransactions.length) {
+            let inserted = 0
+            for (const transaction of inputTransactions) transaction.changes.iterChanges((_fromA, _toA, _fromB, _toB, value) => { inserted += value.length })
+            if (settings.typingSpeed && inserted > 0) {
+              typingStartedAt ??= performance.now()
+              typedCharacters += inserted
+              updateTypingSpeed()
+            }
+            if (settings.typingPractice && inserted > 0) {
+              const fragment = practiceFragment(update.view).toLocaleLowerCase('de-DE')
+              if (!fragment || !practiceWords[0].startsWith(fragment)) {
+                advancePractice()
+                update.view.dispatch({})
+              }
+            }
+          }
         }
       })
     ]
@@ -483,5 +586,6 @@ view.dom.addEventListener('keyup', event => {
 }, true)
 
 window.addEventListener('pagehide', flushDocument)
+updateTypingSpeed()
 if (view.state.doc.length) detectionTimer = window.setTimeout(() => { void detectLanguage(view.state.doc.toString()) }, 0)
 view.focus()

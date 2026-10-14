@@ -19,6 +19,30 @@ test('shows a ghost result without changing text and Enter accepts it', async ({
   await expect(editor).toHaveText('(sqrt(50)*sin(30°))/25.3=0.139744423159')
 })
 
+
+test('typing practice shows five German word prompts, advances after a space or typo, and shows WPM', async ({ page }) => {
+  const editor = page.locator('.cm-content')
+  await page.keyboard.press('Shift+Enter')
+  const dialog = page.getByRole('dialog', { name: 'Einstellungen' })
+  await dialog.getByRole('switch', { name: 'Tippgeschwindigkeit' }).click()
+  await dialog.getByRole('switch', { name: 'Tippübung' }).click()
+  await page.keyboard.press('Shift+Enter')
+
+  const speed = page.getByTestId('typing-speed')
+  const preview = page.getByTestId('typing-preview')
+  await expect(speed).toHaveText('0 WPM')
+  await expect(preview.locator('.typing-word')).toHaveCount(5)
+  const firstWords = await preview.locator('.typing-word').allTextContents()
+
+  await editor.press('Space')
+  await expect.poll(() => preview.locator('.typing-word').allTextContents()).not.toEqual(firstWords)
+  const afterSpace = await preview.locator('.typing-word').allTextContents()
+
+  await editor.press('KeyX')
+  await expect.poll(() => preview.locator('.typing-word').allTextContents()).not.toEqual(afterSpace)
+  await expect(speed).not.toHaveText('0 WPM')
+})
+
 test('computes arithmetic suffixes inside prose and after earlier equals', async ({ page }) => {
   const editor = page.locator('.cm-content')
   await editor.fill('hallo test blabla5*6=30/2=')
@@ -79,7 +103,7 @@ test('file actions work as downloads even when native picker APIs throw', async 
   await expect(buttons.first()).toHaveText('Datei öffnen')
   await expect(buttons.nth(1)).toHaveText('Datei speichern')
   await expect(buttons.first()).toBeFocused()
-  await expect(dialog.getByRole('switch')).toHaveCount(4)
+  await expect(dialog.getByRole('switch')).toHaveCount(6)
   await page.keyboard.press('ArrowDown')
   const downloadPromise = page.waitForEvent('download')
   await page.keyboard.press('Enter')

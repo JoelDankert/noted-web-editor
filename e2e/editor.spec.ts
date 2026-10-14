@@ -82,7 +82,7 @@ test('Shift+Enter opens settings and toggles syntax there without inserting a ne
   await expect.poll(tokenColors).toContain('rgb(255, 155, 242)')
 })
 
-test('opens and operates the four-toggle settings using only the keyboard', async ({ page }) => {
+test('opens and operates the six-toggle settings using only the keyboard', async ({ page }) => {
   const editor = page.locator('.cm-content')
   await editor.fill('unchanged text')
   await page.keyboard.press('Control+Home')
@@ -92,8 +92,8 @@ test('opens and operates the four-toggle settings using only the keyboard', asyn
   const dialog = page.getByRole('dialog', { name: 'Einstellungen' })
   await expect(dialog).toBeVisible()
   const toggles = dialog.getByRole('switch')
-  await expect(toggles).toHaveCount(4)
-  await expect(toggles).toHaveText(['Syntaxhervorhebungan', 'Noted-Tastaturemulationan', 'Vimaus', 'Relative Zeilennummernaus'])
+  await expect(toggles).toHaveCount(6)
+  await expect(toggles).toHaveText(['Syntaxhervorhebungan', 'Noted-Tastaturemulationan', 'Vimaus', 'Relative Zeilennummernaus', 'Tippgeschwindigkeitaus', 'Tippübungaus'])
   await expect(dialog.getByRole('button', { name: 'Datei öffnen' })).toBeFocused()
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')

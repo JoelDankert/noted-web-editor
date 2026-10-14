@@ -5,13 +5,17 @@ export interface EditorSettings {
   notedKeyboard: boolean
   vim: boolean
   relativeLineNumbers: boolean
+  typingSpeed: boolean
+  typingPractice: boolean
 }
 
 export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   syntaxHighlighting: true,
   notedKeyboard: true,
   vim: false,
-  relativeLineNumbers: false
+  relativeLineNumbers: false,
+  typingSpeed: false,
+  typingPractice: false
 }
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>
@@ -27,7 +31,9 @@ export function restoreSettings(storage?: StorageLike): EditorSettings {
       syntaxHighlighting: typeof stored.syntaxHighlighting === 'boolean' ? stored.syntaxHighlighting : DEFAULT_SETTINGS.syntaxHighlighting,
       notedKeyboard: typeof stored.notedKeyboard === 'boolean' ? stored.notedKeyboard : DEFAULT_SETTINGS.notedKeyboard,
       vim: typeof stored.vim === 'boolean' ? stored.vim : DEFAULT_SETTINGS.vim,
-      relativeLineNumbers: typeof stored.relativeLineNumbers === 'boolean' ? stored.relativeLineNumbers : DEFAULT_SETTINGS.relativeLineNumbers
+      relativeLineNumbers: typeof stored.relativeLineNumbers === 'boolean' ? stored.relativeLineNumbers : DEFAULT_SETTINGS.relativeLineNumbers,
+      typingSpeed: typeof stored.typingSpeed === 'boolean' ? stored.typingSpeed : DEFAULT_SETTINGS.typingSpeed,
+      typingPractice: typeof stored.typingPractice === 'boolean' ? stored.typingPractice : DEFAULT_SETTINGS.typingPractice
     }
   } catch {
     return { ...DEFAULT_SETTINGS }

@@ -12,7 +12,7 @@ function memoryStorage(initial: string | null = null) {
 describe('settings storage', () => {
   it('saves and restores settings separately under a versioned key', () => {
     const storage = memoryStorage()
-    const settings = { syntaxHighlighting: false, notedKeyboard: false, vim: true, relativeLineNumbers: true }
+    const settings = { syntaxHighlighting: false, notedKeyboard: false, vim: true, relativeLineNumbers: true, typingSpeed: true, typingPractice: true }
 
     saveSettings(settings, storage)
 
@@ -26,7 +26,7 @@ describe('settings storage', () => {
 
   it('accepts only boolean fields and defaults invalid fields independently', () => {
     const stored = JSON.stringify({ version: 1, syntaxHighlighting: false, notedKeyboard: 'no', vim: 1 })
-    expect(restoreSettings(memoryStorage(stored))).toEqual({ syntaxHighlighting: false, notedKeyboard: true, vim: false, relativeLineNumbers: false })
+    expect(restoreSettings(memoryStorage(stored))).toEqual({ syntaxHighlighting: false, notedKeyboard: true, vim: false, relativeLineNumbers: false, typingSpeed: false, typingPractice: false })
   })
 
   it('handles unavailable storage without throwing', () => {
