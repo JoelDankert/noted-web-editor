@@ -38,6 +38,14 @@ let saveTimer = 0
 let pendingText: string | null = null
 let currentLanguage = 'plaintext'
 let currentFileName = 'notiz.txt'
+let currentFileHandle: FileSystemFileHandle | null = null
+
+type SavePickerWindow = Window & {
+  showSaveFilePicker?: (options?: {
+    suggestedName?: string
+    types?: Array<{ description?: string, accept: Record<string, string[]> }>
+  }) => Promise<FileSystemFileHandle>
+}
 
 for (const [name, grammar] of Object.entries({ javascript: javascriptGrammar, typescript: typescriptGrammar, json: jsonGrammar, python: pythonGrammar, xml: xmlGrammar, css: cssGrammar, markdown: markdownGrammar, java: javaGrammar, cpp: cppGrammar, rust: rustGrammar, sql: sqlGrammar })) {
   hljs.registerLanguage(name, grammar)
@@ -246,6 +254,7 @@ function replaceWithOpenedText(text: string, fileName: string) {
   if (current && current !== text && !window.confirm('Aktuellen Text ersetzen?')) return
   view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: text.length } })
   currentFileName = fileName
+  currentFileHandle = null
   closeSettings()
 }
 
@@ -265,10 +274,62 @@ function downloadText(text: string) {
   closeSettings()
 }
 
-function saveFile() {
+function isPickerCancellation(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
+}
+
+async function writeFile(handle: FileSystemFileHandle) {
+  const writable = await handle.createWritable()
+  await writable.write(view.state.doc.toString())
+  await writable.close()
+}
+
+async function chooseSaveFile(): Promise<FileSystemFileHandle | null> {
+  const picker = (window as SavePickerWindow).showSaveFilePicker
+  if (!picker) return null
+  return picker.call(window, {
+    suggestedName: currentFileName,
+    types: [{ description: 'Textdatei', accept: { 'text/plain': ['.txt'] } }]
+  })
+}
+
+async function saveFileAs() {
   showSettingsStatus('')
-  try { downloadText(view.state.doc.toString()) }
-  catch (error) { showSettingsStatus(fileError(error)) }
+  let handle: FileSystemFileHandle | null
+  try { handle = await chooseSaveFile() }
+  catch (error) {
+    if (isPickerCancellation(error)) return
+    try { downloadText(view.state.doc.toString()) }
+    catch (downloadError) { showSettingsStatus(fileError(downloadError)) }
+    return
+  }
+  if (!handle) {
+    try { downloadText(view.state.doc.toString()) }
+    catch (error) { showSettingsStatus(fileError(error)) }
+    return
+  }
+  try {
+    await writeFile(handle)
+    currentFileHandle = handle
+    currentFileName = handle.name
+    closeSettings()
+  } catch (error) {
+    showSettingsStatus(fileError(error))
+  }
+}
+
+async function saveFile() {
+  if (!currentFileHandle) {
+    await saveFileAs()
+    return
+  }
+  showSettingsStatus('')
+  try {
+    await writeFile(currentFileHandle)
+    closeSettings()
+  } catch (error) {
+    showSettingsStatus(fileError(error))
+  }
 }
 
 fallbackOpenInput.addEventListener('change', () => {
@@ -292,7 +353,7 @@ function renderSettings(activeIndex = 0) {
   overlay.setAttribute('aria-label', 'Einstellungen')
   const list = document.createElement('div')
   list.className = 'settings-list'
-  for (const [label, action] of [['Datei öffnen', openFile], ['Datei speichern', saveFile]] as const) {
+  for (const [label, action] of [['Datei öffnen', openFile], ['Datei speichern', saveFile], ['Speichern unter', saveFileAs]] as const) {
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'settings-action'
@@ -310,7 +371,7 @@ function renderSettings(activeIndex = 0) {
     button.innerHTML = `<span>${label}</span><span aria-hidden="true">${settings[key] ? 'an' : 'aus'}</span>`
     button.addEventListener('click', () => {
       setSettings({ ...settings, [key]: !settings[key] })
-      renderSettings(index + 2)
+      renderSettings(index + 3)
     })
     list.append(button)
   })
