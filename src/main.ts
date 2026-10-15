@@ -530,12 +530,16 @@ const view = new EditorView({
           const inputTransactions = update.transactions.filter(transaction => transaction.isUserEvent('input'))
           if (inputTransactions.length) {
             let inserted = 0
-            for (const transaction of inputTransactions) transaction.changes.iterChanges((_fromA, _toA, _fromB, _toB, value) => { inserted += value.length })
+            let insertedText = ''
+            for (const transaction of inputTransactions) transaction.changes.iterChanges((_fromA, _toA, _fromB, _toB, value) => {
+              inserted += value.length
+              insertedText += value.toString()
+            })
             if (settings.typingSpeed && inserted > 0) {
               typingEvents.push({ at: performance.now(), characters: inserted })
               updateTypingSpeed()
             }
-            if (settings.typingPractice && inserted > 0 && practiceFragment(update.view) === '') {
+            if (settings.typingPractice && inserted > 0 && update.state.doc.lines === update.startState.doc.lines && /[ \t]/.test(insertedText) && practiceFragment(update.view) === '') {
               advancePractice()
               update.view.dispatch({})
             }
