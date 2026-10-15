@@ -48,6 +48,24 @@ test('typing practice keeps the prompt stable while typing, advances after space
   await expect(speed).not.toHaveText('0 WPM')
 })
 
+test('typing practice consumes an uppercase first letter from a capitalized prompt', async ({ page }) => {
+  await page.addInitScript(() => {
+    const values = [0.001, 0.003, 0.005, 0.007, 0.009]
+    let value = 0
+    Math.random = () => values[(value++) % values.length]
+  })
+  await page.reload()
+  await page.keyboard.press('Shift+Enter')
+  const dialog = page.getByRole('dialog', { name: 'Einstellungen' })
+  await dialog.getByRole('switch', { name: 'Tippübung' }).click()
+  await page.keyboard.press('Shift+Enter')
+
+  const editor = page.locator('.cm-content')
+  await expect(page.locator('.typing-character').first()).toHaveText('A')
+  await editor.fill('A')
+  await expect(page.locator('.typing-character').first()).not.toHaveText('A')
+})
+
 test('typing prompts wrap one word at a time on narrow screens', async ({ page }) => {
   await page.setViewportSize({ width: 150, height: 720 })
   await page.keyboard.press('Shift+Enter')

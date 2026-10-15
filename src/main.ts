@@ -160,7 +160,7 @@ function previewCharacters(words: readonly string[]): PreviewCharacter[] {
 
 function typingDecorations(editor: EditorView): DecorationSet {
   if (!settings.typingPractice || !editor.state.selection.main.empty) return Decoration.none
-  const fragment = practiceFragment(editor).toLocaleLowerCase('de-DE')
+  const fragment = practiceFragment(editor)
   const first = practiceWords[0]
   const words = [first.startsWith(fragment) ? first.slice(fragment.length) : first, ...practiceWords.slice(1)]
   const cursor = editor.state.selection.main.head
