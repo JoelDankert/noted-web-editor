@@ -29,7 +29,7 @@ test('typing practice keeps the prompt stable while typing, advances after space
   await page.keyboard.press('Shift+Enter')
 
   const speed = page.getByTestId('typing-speed')
-  const preview = page.locator('.typing-word')
+  const preview = page.locator('[data-word-index]')
   await expect(speed).toHaveText('0 WPM')
   await expect(preview).toHaveCount(5)
   const firstWords = await preview.allTextContents()
@@ -55,9 +55,9 @@ test('typing prompts wrap one word at a time on narrow screens', async ({ page }
   await dialog.getByRole('switch', { name: 'Tippübung' }).click()
   await page.keyboard.press('Shift+Enter')
 
-  const wordMetrics = await page.locator('.typing-word').evaluateAll(words => words.map(word => ({
-    top: Math.round(word.getBoundingClientRect().top),
-    color: getComputedStyle(word).color
+  const wordMetrics = await page.locator('.typing-character').evaluateAll(characters => characters.map(character => ({
+    top: Math.round(character.getBoundingClientRect().top),
+    color: getComputedStyle(character).color
   })))
   expect(new Set(wordMetrics.map(word => word.top)).size).toBeGreaterThan(1)
   expect(wordMetrics.every(word => word.color === 'rgb(115, 117, 125)')).toBe(true)

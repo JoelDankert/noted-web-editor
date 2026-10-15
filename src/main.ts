@@ -128,17 +128,34 @@ function practiceFragment(editor: EditorView): string {
   return line.text.slice(0, selection.head - line.from).split(/\s/).at(-1) ?? ''
 }
 
-class TypingWordWidget extends WidgetType {
-  constructor(readonly word: string, readonly index: number) { super() }
-  eq(other: TypingWordWidget) { return this.word === other.word && this.index === other.index }
+type PreviewCharacter = { character: string; wordIndex: number; startsWord: boolean }
+
+class TypingCharacterWidget extends WidgetType {
+  constructor(readonly character: PreviewCharacter) { super() }
+  eq(other: TypingCharacterWidget) {
+    return this.character.character === other.character.character
+      && this.character.wordIndex === other.character.wordIndex
+      && this.character.startsWord === other.character.startsWord
+  }
   toDOM() {
     const item = document.createElement('span')
-    item.className = `typing-word${this.index === 0 ? ' cm-typing-preview' : ''}`
-    if (this.index === 0) item.dataset.testid = 'typing-preview'
+    item.className = 'typing-character'
+    if (this.character.startsWord) {
+      item.dataset.wordIndex = String(this.character.wordIndex)
+      if (this.character.wordIndex === 0) item.dataset.testid = 'typing-preview'
+    }
     item.setAttribute('aria-hidden', 'true')
-    item.textContent = `${this.index ? ' ' : ''}${this.word}`
+    item.textContent = this.character.character
     return item
   }
+}
+
+function previewCharacters(words: readonly string[]): PreviewCharacter[] {
+  return words.flatMap((word, wordIndex) => [...`${wordIndex ? ' ' : ''}${word}`].map((character, characterIndex) => ({
+    character,
+    wordIndex,
+    startsWord: characterIndex === (wordIndex ? 1 : 0)
+  })))
 }
 
 function typingDecorations(editor: EditorView): DecorationSet {
@@ -147,7 +164,7 @@ function typingDecorations(editor: EditorView): DecorationSet {
   const first = practiceWords[0]
   const words = [first.startsWith(fragment) ? first.slice(fragment.length) : first, ...practiceWords.slice(1)]
   const cursor = editor.state.selection.main.head
-  return Decoration.set(words.map((word, index) => Decoration.widget({ widget: new TypingWordWidget(word, index), side: index + 1 }).range(cursor)))
+  return Decoration.set(previewCharacters(words).map((character, index) => Decoration.widget({ widget: new TypingCharacterWidget(character), side: index + 1 }).range(cursor)))
 }
 
 const expressionPreview = ViewPlugin.fromClass(class {
