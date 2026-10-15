@@ -20,7 +20,7 @@ test('shows a ghost result without changing text and Enter accepts it', async ({
 })
 
 
-test('typing practice shows five German word prompts, advances after a space or typo, and shows WPM', async ({ page }) => {
+test('typing practice keeps the prompt stable while typing, advances after spaces, and shows WPM', async ({ page }) => {
   const editor = page.locator('.cm-content')
   await page.keyboard.press('Shift+Enter')
   const dialog = page.getByRole('dialog', { name: 'Einstellungen' })
@@ -39,6 +39,8 @@ test('typing practice shows five German word prompts, advances after a space or 
   const afterSpace = await preview.locator('.typing-word').allTextContents()
 
   await editor.press('KeyX')
+  await expect(preview.locator('.typing-word')).toHaveText(afterSpace)
+  await editor.press('Space')
   await expect.poll(() => preview.locator('.typing-word').allTextContents()).not.toEqual(afterSpace)
   await expect(speed).not.toHaveText('0 WPM')
 })

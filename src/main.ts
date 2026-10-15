@@ -39,20 +39,22 @@ let pendingText: string | null = null
 let currentLanguage = 'plaintext'
 let currentFileName = 'notiz.txt'
 const typingSpeedElement = document.querySelector<HTMLElement>('#typing-speed')!
-let typingStartedAt: number | null = null
-let typedCharacters = 0
+const TYPING_SPEED_WINDOW_MS = 5_000
+type TypingEvent = { at: number; characters: number }
+let typingEvents: TypingEvent[] = []
 
 const germanWords = [
   'abend', 'abstand', 'acker', 'adresse', 'affe', 'alltag', 'ampel', 'apfel', 'arbeit', 'atem', 'auge', 'auto', 'bach', 'bahn', 'ball', 'baum', 'becher', 'berg', 'bild', 'blatt', 'blume', 'boden', 'boot', 'brot', 'brücke', 'buch', 'bühne', 'dach', 'dampf', 'dorf', 'durst', 'ecke', 'ei', 'eimer', 'eis', 'eltern', 'ende', 'engel', 'erde', 'farbe', 'feder', 'feld', 'fenster', 'feuer', 'finger', 'fisch', 'fluss', 'frage', 'frost', 'frühling', 'fuß', 'garten', 'gasse', 'geist', 'geld', 'gesicht', 'glas', 'glück', 'gras', 'grenze', 'großstadt', 'grund', 'hafen', 'hand', 'haus', 'heft', 'herbst', 'herz', 'himmel', 'holz', 'hund', 'hut', 'idee', 'insel', 'jahr', 'karte', 'keller', 'kind', 'kirche', 'kissen', 'klang', 'kleid', 'klippe', 'knopf', 'koffer', 'kopf', 'kraft', 'kreis', 'küche', 'lampe', 'land', 'lärm', 'laub', 'leben', 'lehrer', 'licht', 'lied', 'luft', 'maus', 'meer', 'mensch', 'mittag', 'mond', 'morgen', 'musik', 'nacht', 'nadel', 'nebel', 'netz', 'ofen', 'ort', 'papier', 'park', 'pfad', 'pferd', 'pflanze', 'platz', 'post', 'preis', 'punkt', 'rad', 'radio', 'regen', 'reise', 'ring', 'rock', 'rolle', 'rose', 'salz', 'sand', 'satz', 'schule', 'see', 'segel', 'seite', 'sommer', 'sonne', 'spiel', 'spur', 'stadt', 'stahl', 'stern', 'stimme', 'straße', 'strom', 'stuhl', 'tag', 'tal', 'tanz', 'tee', 'teich', 'tisch', 'tor', 'traum', 'tür', 'uhr', 'vater', 'vogel', 'wald', 'wand', 'wasser', 'weg', 'wein', 'welt', 'wiese', 'wind', 'winter', 'wort', 'wunder', 'zahn', 'zeit', 'zelt', 'ziel', 'zimmer', 'zunge', 'zug'
 ] as const
 
-function nextPracticeWords(previousFirst?: string): string[] {
+function randomPracticeWord(excluded: readonly string[] = []): string {
+  const available = germanWords.filter(word => !excluded.includes(word))
+  return available[Math.floor(Math.random() * available.length)] ?? germanWords[0]
+}
+
+function nextPracticeWords(): string[] {
   const words: string[] = []
-  while (words.length < 5) {
-    const word = germanWords[Math.floor(Math.random() * germanWords.length)]
-    if ((words.length === 0 && word === previousFirst) || words.includes(word)) continue
-    words.push(word)
-  }
+  while (words.length < 5) words.push(randomPracticeWord(words))
   return words
 }
 
@@ -211,19 +213,21 @@ function clearLanguage() {
 function updateTypingSpeed() {
   typingSpeedElement.hidden = !settings.typingSpeed
   if (!settings.typingSpeed) return
-  if (typingStartedAt === null) { typingSpeedElement.textContent = '0 WPM'; return }
-  const minutes = Math.max((performance.now() - typingStartedAt) / 60_000, 1 / 60)
-  typingSpeedElement.textContent = `${Math.round((typedCharacters / 5) / minutes)} WPM`
+  const cutoff = performance.now() - TYPING_SPEED_WINDOW_MS
+  typingEvents = typingEvents.filter(event => event.at >= cutoff)
+  const characters = typingEvents.reduce((total, event) => total + event.characters, 0)
+  const minutes = TYPING_SPEED_WINDOW_MS / 60_000
+  typingSpeedElement.textContent = `${Math.round((characters / 5) / minutes)} WPM`
 }
 
 function resetTypingSpeed() {
-  typingStartedAt = null
-  typedCharacters = 0
+  typingEvents = []
   updateTypingSpeed()
 }
 
 function advancePractice() {
-  practiceWords = nextPracticeWords(practiceWords[0])
+  const nextWord = randomPracticeWord(practiceWords)
+  practiceWords = [...practiceWords.slice(1), nextWord]
 }
 
 function setSettings(next: EditorSettings) {
@@ -240,6 +244,8 @@ function setSettings(next: EditorSettings) {
   }
   updateTypingSpeed()
 }
+
+window.setInterval(updateTypingSpeed, 250)
 
 class RelativeNumber extends GutterMarker {
   constructor(readonly label: string) { super() }
@@ -526,16 +532,12 @@ const view = new EditorView({
             let inserted = 0
             for (const transaction of inputTransactions) transaction.changes.iterChanges((_fromA, _toA, _fromB, _toB, value) => { inserted += value.length })
             if (settings.typingSpeed && inserted > 0) {
-              typingStartedAt ??= performance.now()
-              typedCharacters += inserted
+              typingEvents.push({ at: performance.now(), characters: inserted })
               updateTypingSpeed()
             }
-            if (settings.typingPractice && inserted > 0) {
-              const fragment = practiceFragment(update.view).toLocaleLowerCase('de-DE')
-              if (!fragment || !practiceWords[0].startsWith(fragment)) {
-                advancePractice()
-                update.view.dispatch({})
-              }
+            if (settings.typingPractice && inserted > 0 && practiceFragment(update.view) === '') {
+              advancePractice()
+              update.view.dispatch({})
             }
           }
         }
