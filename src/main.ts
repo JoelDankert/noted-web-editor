@@ -539,7 +539,7 @@ const view = new EditorView({
               typingEvents.push({ at: performance.now(), characters: inserted })
               updateTypingSpeed()
             }
-            if (settings.typingPractice && inserted > 0 && update.state.doc.lines === update.startState.doc.lines && /[ \t]/.test(insertedText) && practiceFragment(update.view) === '') {
+            if (settings.typingPractice && inserted > 0 && /[ \t]/.test(insertedText) && practiceFragment(update.view) === '') {
               advancePractice()
               update.view.dispatch({})
             }

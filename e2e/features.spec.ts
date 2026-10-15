@@ -44,7 +44,7 @@ test('typing practice keeps the prompt stable while typing, advances after space
   await expect.poll(() => preview.locator('.typing-word').allTextContents()).not.toEqual(afterSpace)
   const afterSecondSpace = await preview.locator('.typing-word').allTextContents()
   await editor.press('Enter')
-  await expect.poll(() => preview.locator('.typing-word').allTextContents()).toEqual(afterSecondSpace)
+  await expect.poll(() => preview.locator('.typing-word').allTextContents()).not.toEqual(afterSecondSpace)
   await expect(speed).not.toHaveText('0 WPM')
 })
 
