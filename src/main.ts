@@ -128,21 +128,16 @@ function practiceFragment(editor: EditorView): string {
   return line.text.slice(0, selection.head - line.from).split(/\s/).at(-1) ?? ''
 }
 
-class TypingPreviewWidget extends WidgetType {
-  constructor(readonly words: readonly string[]) { super() }
-  eq(other: TypingPreviewWidget) { return this.words.join(' ') === other.words.join(' ') }
+class TypingWordWidget extends WidgetType {
+  constructor(readonly word: string, readonly index: number) { super() }
+  eq(other: TypingWordWidget) { return this.word === other.word && this.index === other.index }
   toDOM() {
-    const preview = document.createElement('span')
-    preview.className = 'cm-typing-preview'
-    preview.dataset.testid = 'typing-preview'
-    preview.setAttribute('aria-hidden', 'true')
-    this.words.forEach((word, index) => {
-      const item = document.createElement('span')
-      item.className = 'typing-word'
-      item.textContent = `${index ? ' ' : ''}${word}`
-      preview.append(item)
-    })
-    return preview
+    const item = document.createElement('span')
+    item.className = `typing-word${this.index === 0 ? ' cm-typing-preview' : ''}`
+    if (this.index === 0) item.dataset.testid = 'typing-preview'
+    item.setAttribute('aria-hidden', 'true')
+    item.textContent = `${this.index ? ' ' : ''}${this.word}`
+    return item
   }
 }
 
@@ -151,7 +146,8 @@ function typingDecorations(editor: EditorView): DecorationSet {
   const fragment = practiceFragment(editor).toLocaleLowerCase('de-DE')
   const first = practiceWords[0]
   const words = [first.startsWith(fragment) ? first.slice(fragment.length) : first, ...practiceWords.slice(1)]
-  return Decoration.set([Decoration.widget({ widget: new TypingPreviewWidget(words), side: 1 }).range(editor.state.selection.main.head)])
+  const cursor = editor.state.selection.main.head
+  return Decoration.set(words.map((word, index) => Decoration.widget({ widget: new TypingWordWidget(word, index), side: index + 1 }).range(cursor)))
 }
 
 const expressionPreview = ViewPlugin.fromClass(class {

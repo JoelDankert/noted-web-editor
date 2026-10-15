@@ -29,23 +29,34 @@ test('typing practice keeps the prompt stable while typing, advances after space
   await page.keyboard.press('Shift+Enter')
 
   const speed = page.getByTestId('typing-speed')
-  const preview = page.getByTestId('typing-preview')
+  const preview = page.locator('.typing-word')
   await expect(speed).toHaveText('0 WPM')
-  await expect(preview.locator('.typing-word')).toHaveCount(5)
-  const firstWords = await preview.locator('.typing-word').allTextContents()
+  await expect(preview).toHaveCount(5)
+  const firstWords = await preview.allTextContents()
 
   await editor.press('Space')
-  await expect.poll(() => preview.locator('.typing-word').allTextContents()).not.toEqual(firstWords)
-  const afterSpace = await preview.locator('.typing-word').allTextContents()
+  await expect.poll(() => preview.allTextContents()).not.toEqual(firstWords)
+  const afterSpace = await preview.allTextContents()
 
   await editor.press('KeyX')
-  await expect(preview.locator('.typing-word')).toHaveText(afterSpace)
+  await expect(preview).toHaveText(afterSpace)
   await editor.press('Space')
-  await expect.poll(() => preview.locator('.typing-word').allTextContents()).not.toEqual(afterSpace)
-  const afterSecondSpace = await preview.locator('.typing-word').allTextContents()
+  await expect.poll(() => preview.allTextContents()).not.toEqual(afterSpace)
+  const afterSecondSpace = await preview.allTextContents()
   await editor.press('Enter')
-  await expect.poll(() => preview.locator('.typing-word').allTextContents()).not.toEqual(afterSecondSpace)
+  await expect.poll(() => preview.allTextContents()).not.toEqual(afterSecondSpace)
   await expect(speed).not.toHaveText('0 WPM')
+})
+
+test('typing prompts wrap one word at a time on narrow screens', async ({ page }) => {
+  await page.setViewportSize({ width: 150, height: 720 })
+  await page.keyboard.press('Shift+Enter')
+  const dialog = page.getByRole('dialog', { name: 'Einstellungen' })
+  await dialog.getByRole('switch', { name: 'Tippübung' }).click()
+  await page.keyboard.press('Shift+Enter')
+
+  const wordTops = await page.locator('.typing-word').evaluateAll(words => words.map(word => Math.round(word.getBoundingClientRect().top)))
+  expect(new Set(wordTops).size).toBeGreaterThan(1)
 })
 
 test('computes arithmetic suffixes inside prose and after earlier equals', async ({ page }) => {
