@@ -55,8 +55,12 @@ test('typing prompts wrap one word at a time on narrow screens', async ({ page }
   await dialog.getByRole('switch', { name: 'Tippübung' }).click()
   await page.keyboard.press('Shift+Enter')
 
-  const wordTops = await page.locator('.typing-word').evaluateAll(words => words.map(word => Math.round(word.getBoundingClientRect().top)))
-  expect(new Set(wordTops).size).toBeGreaterThan(1)
+  const wordMetrics = await page.locator('.typing-word').evaluateAll(words => words.map(word => ({
+    top: Math.round(word.getBoundingClientRect().top),
+    color: getComputedStyle(word).color
+  })))
+  expect(new Set(wordMetrics.map(word => word.top)).size).toBeGreaterThan(1)
+  expect(wordMetrics.every(word => word.color === 'rgb(115, 117, 125)')).toBe(true)
 })
 
 test('computes arithmetic suffixes inside prose and after earlier equals', async ({ page }) => {

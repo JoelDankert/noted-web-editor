@@ -22,7 +22,7 @@ body { min-height: 100vh; background: #000; }
 .settings-toggle:focus, .settings-action:focus { outline: none; background: #18181b; color: #f4f4f5; }
 .settings-toggle[aria-checked="true"] span:last-child { color: #b8b7ff; }
 .settings-status { min-height: 1.4em; padding: 5px 12px 0; color: #a57373; font: 11px/1.4 "JetBrains Mono", "SFMono-Regular", Consolas, monospace; }
-.cm-expression-result, .cm-typing-preview { color: #73757d; opacity: .8; }
+.cm-expression-result, .typing-word { color: #73757d; opacity: .8; }
 .cm-typing-preview { pointer-events: none; }
 .typing-word { white-space: nowrap; }
 #typing-speed { position: fixed; right: 14px; bottom: 12px; z-index: 2; color: #8d8d92; font: 12px/1 "JetBrains Mono", "SFMono-Regular", Consolas, monospace; pointer-events: none; }
