@@ -1,8 +1,13 @@
 import { test, expect } from '@playwright/test'
 
+const TEST_SETTINGS = { version: 1, syntaxHighlighting: true, notedKeyboard: true, vim: false, relativeLineNumbers: false, typingSpeed: false, typingPractice: false }
+
 test.beforeEach(async ({ page }) => {
   await page.goto('./')
-  await page.evaluate(() => localStorage.clear())
+  await page.evaluate(settings => {
+    localStorage.clear()
+    localStorage.setItem('noted-web-editor:settings:v1', JSON.stringify(settings))
+  }, TEST_SETTINGS)
   await page.reload()
 })
 

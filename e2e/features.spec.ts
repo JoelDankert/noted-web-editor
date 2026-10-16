@@ -1,10 +1,25 @@
 import { test, expect } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
+const TEST_SETTINGS = { version: 1, syntaxHighlighting: true, notedKeyboard: true, vim: false, relativeLineNumbers: false, typingSpeed: false, typingPractice: false }
+
 test.beforeEach(async ({ page }) => {
   await page.goto('./')
+  await page.evaluate(settings => {
+    localStorage.clear()
+    localStorage.setItem('noted-web-editor:settings:v1', JSON.stringify(settings))
+  }, TEST_SETTINGS)
+  await page.reload()
+})
+
+test('defaults to every setting enabled except typing practice', async ({ page }) => {
   await page.evaluate(() => localStorage.clear())
   await page.reload()
+  await page.keyboard.press('Shift+Enter')
+
+  await expect(page.getByRole('dialog', { name: 'Einstellungen' }).getByRole('switch')).toHaveText([
+    'Syntaxhervorhebungan', 'Noted-Tastaturemulationan', 'Viman', 'Relative Zeilennummernan', 'Tippgeschwindigkeitan', 'Tippübungaus'
+  ])
 })
 
 test('shows a ghost result without changing text and Enter accepts it', async ({ page }) => {

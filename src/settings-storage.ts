@@ -12,9 +12,9 @@ export interface EditorSettings {
 export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   syntaxHighlighting: true,
   notedKeyboard: true,
-  vim: false,
-  relativeLineNumbers: false,
-  typingSpeed: false,
+  vim: true,
+  relativeLineNumbers: true,
+  typingSpeed: true,
   typingPractice: false
 }
 

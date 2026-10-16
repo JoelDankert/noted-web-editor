@@ -26,7 +26,7 @@ describe('settings storage', () => {
 
   it('accepts only boolean fields and defaults invalid fields independently', () => {
     const stored = JSON.stringify({ version: 1, syntaxHighlighting: false, notedKeyboard: 'no', vim: 1 })
-    expect(restoreSettings(memoryStorage(stored))).toEqual({ syntaxHighlighting: false, notedKeyboard: true, vim: false, relativeLineNumbers: false, typingSpeed: false, typingPractice: false })
+    expect(restoreSettings(memoryStorage(stored))).toEqual({ syntaxHighlighting: false, notedKeyboard: true, vim: true, relativeLineNumbers: true, typingSpeed: true, typingPractice: false })
   })
 
   it('handles unavailable storage without throwing', () => {
